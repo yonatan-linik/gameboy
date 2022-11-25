@@ -107,6 +107,9 @@ enum Instruction {
     AND(ArithmeticTarget),
     OR(ArithmeticTarget),
     XOR(ArithmeticTarget),
+    CP(ArithmeticTarget),
+    INC(ArithmeticTarget),
+    DEC(ArithmeticTarget),
     ADDHL(ArithmeticTarget),
 }
 
@@ -125,7 +128,7 @@ struct CPU {
 }
 
 impl CPU {
-    fn get_arithmetic_target_value(&self, target: ArithmeticTarget) -> u8 {
+    fn get_arithmetic_target_value(&self, target: &ArithmeticTarget) -> u8 {
         match target {
             ArithmeticTarget::A => self.registers.a,
             ArithmeticTarget::B => self.registers.b,
@@ -137,38 +140,65 @@ impl CPU {
         }
     }
 
+    fn set_arithmetic_target_value(&mut self, target: &ArithmeticTarget, value: u8) {
+        match target {
+            ArithmeticTarget::A => self.registers.a = value,
+            ArithmeticTarget::B => self.registers.b = value,
+            ArithmeticTarget::C => self.registers.c = value,
+            ArithmeticTarget::D => self.registers.d = value,
+            ArithmeticTarget::E => self.registers.e = value,
+            ArithmeticTarget::H => self.registers.h = value,
+            ArithmeticTarget::L => self.registers.l = value,
+        };
+    }
+
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
             Instruction::ADD(target) => {
-                let value: u8 = self.get_arithmetic_target_value(target);
+                let value: u8 = self.get_arithmetic_target_value(&target);
                 self.registers.a = self.add(value);
             }
             Instruction::ADC(target) => {
-                let value: u8 = self.get_arithmetic_target_value(target);
+                let value: u8 = self.get_arithmetic_target_value(&target);
                 self.registers.a = self.adc(value);
             }
             Instruction::SUB(target) => {
-                let value: u8 = self.get_arithmetic_target_value(target);
+                let value: u8 = self.get_arithmetic_target_value(&target);
                 self.registers.a = self.sub(value);
             }
             Instruction::SBC(target) => {
-                let value: u8 = self.get_arithmetic_target_value(target);
+                let value: u8 = self.get_arithmetic_target_value(&target);
                 self.registers.a = self.sbc(value);
             }
             Instruction::AND(target) => {
-                let value: u8 = self.get_arithmetic_target_value(target);
+                let value: u8 = self.get_arithmetic_target_value(&target);
                 self.registers.a = self.and(value);
             }
             Instruction::OR(target) => {
-                let value: u8 = self.get_arithmetic_target_value(target);
+                let value: u8 = self.get_arithmetic_target_value(&target);
                 self.registers.a = self.or(value);
             }
             Instruction::XOR(target) => {
-                let value: u8 = self.get_arithmetic_target_value(target);
+                let value: u8 = self.get_arithmetic_target_value(&target);
                 self.registers.a = self.xor(value);
             }
+            Instruction::CP(target) => {
+                let value: u8 = self.get_arithmetic_target_value(&target);
+                // Just like sub without updating the A register
+                self.sub(value);
+            }
+            Instruction::INC(target) => {
+                let value: u8 = self.get_arithmetic_target_value(&target);
+                let result = self.inc(value);
+                self.set_arithmetic_target_value(&target, result);
+            }
+            Instruction::DEC(target) => {
+                let value: u8 = self.get_arithmetic_target_value(&target);
+                let result = self.dec(value);
+                self.set_arithmetic_target_value(&target, result);
+            }
             Instruction::ADDHL(target) => {
-                let value: u8 = self.get_arithmetic_target_value(target);
+                let value: u8 = self.get_arithmetic_target_value(&target);
                 let result = self.addhl(value);
                 self.registers.set_hl(result);
             }
@@ -259,6 +289,32 @@ impl CPU {
         self.registers.f.subtract = false;
         self.registers.f.carry = false;
         self.registers.f.half_carry = false;
+
+        result
+    }
+
+    fn inc(&mut self, value: u8) -> u8 {
+        let result = value.wrapping_add(1);
+
+        self.registers.f.zero = result == 0;
+        self.registers.f.subtract = false;
+
+        // No carry on inc operation
+        self.registers.f.carry = false;
+        self.registers.f.half_carry = (value & 0xF) == 0xF;
+
+        result
+    }
+
+    fn dec(&mut self, value: u8) -> u8 {
+        let result = value.wrapping_sub(1);
+
+        self.registers.f.zero = result == 0;
+        self.registers.f.subtract = true;
+
+        // No carry on dec operation
+        self.registers.f.carry = false;
+        self.registers.f.half_carry = (value & 0xF).wrapping_sub(1) > 0xF;
 
         result
     }
@@ -661,5 +717,157 @@ mod cpu_tests {
         assert!(!cpu.registers.f.subtract);
         assert!(cpu.registers.f.zero);
         assert!(!cpu.registers.f.half_carry);
+    }
+
+    #[test]
+    fn test_cp_c_eq() {
+        let mut cpu = CPU {
+            registers: { Default::default() },
+        };
+        cpu.registers.c = 0xf2;
+        cpu.registers.a = 0xf2;
+        cpu.execute(Instruction::CP(ArithmeticTarget::C));
+
+        assert_eq!(cpu.registers.c, 0xf2);
+        assert_eq!(cpu.registers.a, 0xf2);
+
+        assert!(!cpu.registers.f.carry);
+        assert!(cpu.registers.f.subtract);
+        assert!(cpu.registers.f.zero);
+        assert!(!cpu.registers.f.half_carry);
+    }
+
+    #[test]
+    fn test_cp_c_larger() {
+        let mut cpu = CPU {
+            registers: { Default::default() },
+        };
+        cpu.registers.c = 0xf3;
+        cpu.registers.a = 0xf2;
+        cpu.execute(Instruction::CP(ArithmeticTarget::C));
+
+        assert_eq!(cpu.registers.c, 0xf3);
+        assert_eq!(cpu.registers.a, 0xf2);
+
+        assert!(cpu.registers.f.carry);
+        assert!(cpu.registers.f.subtract);
+        assert!(!cpu.registers.f.zero);
+        assert!(cpu.registers.f.half_carry);
+    }
+
+    #[test]
+    fn test_cp_c_smaller() {
+        let mut cpu = CPU {
+            registers: { Default::default() },
+        };
+        cpu.registers.c = 0xf2;
+        cpu.registers.a = 0xf3;
+        cpu.execute(Instruction::CP(ArithmeticTarget::C));
+
+        assert_eq!(cpu.registers.c, 0xf2);
+        assert_eq!(cpu.registers.a, 0xf3);
+
+        assert!(!cpu.registers.f.carry);
+        assert!(cpu.registers.f.subtract);
+        assert!(!cpu.registers.f.zero);
+        assert!(!cpu.registers.f.half_carry);
+    }
+
+    #[test]
+    fn test_inc_d() {
+        let mut cpu = CPU {
+            registers: { Default::default() },
+        };
+        cpu.registers.d = 7;
+        cpu.execute(Instruction::INC(ArithmeticTarget::D));
+
+        assert_eq!(cpu.registers.d, 7 + 1);
+
+        assert!(!cpu.registers.f.carry);
+        assert!(!cpu.registers.f.subtract);
+        assert!(!cpu.registers.f.zero);
+        assert!(!cpu.registers.f.half_carry);
+    }
+
+    #[test]
+    fn test_inc_d_half_carry() {
+        let mut cpu = CPU {
+            registers: { Default::default() },
+        };
+        cpu.registers.d = 15;
+        cpu.execute(Instruction::INC(ArithmeticTarget::D));
+
+        assert_eq!(cpu.registers.d, 15 + 1);
+
+        assert!(!cpu.registers.f.carry);
+        assert!(!cpu.registers.f.subtract);
+        assert!(!cpu.registers.f.zero);
+        assert!(cpu.registers.f.half_carry);
+    }
+
+    #[test]
+    fn test_inc_d_carry() {
+        let mut cpu = CPU {
+            registers: { Default::default() },
+        };
+        cpu.registers.d = 255;
+        cpu.execute(Instruction::INC(ArithmeticTarget::D));
+
+        assert_eq!(cpu.registers.d, (255 + 1) as u8);
+
+        // Shouldn't indicate carry on "inc" operation
+        assert!(!cpu.registers.f.carry);
+        assert!(!cpu.registers.f.subtract);
+        assert!(cpu.registers.f.zero);
+        assert!(cpu.registers.f.half_carry);
+    }
+
+    #[test]
+    fn test_dec_e() {
+        let mut cpu = CPU {
+            registers: { Default::default() },
+        };
+        cpu.registers.e = 7;
+        cpu.execute(Instruction::DEC(ArithmeticTarget::E));
+
+        assert_eq!(cpu.registers.e, 7 - 1);
+
+        assert!(!cpu.registers.f.carry);
+        assert!(cpu.registers.f.subtract);
+        assert!(!cpu.registers.f.zero);
+        assert!(!cpu.registers.f.half_carry);
+    }
+
+    #[test]
+    fn test_dec_e_zero() {
+        let mut cpu = CPU {
+            registers: { Default::default() },
+        };
+        cpu.registers.e = 1;
+        cpu.execute(Instruction::DEC(ArithmeticTarget::E));
+
+        assert_eq!(cpu.registers.e, 1 - 1);
+
+        assert!(!cpu.registers.f.carry);
+        assert!(cpu.registers.f.subtract);
+        assert!(cpu.registers.f.zero);
+        assert!(!cpu.registers.f.half_carry);
+    }
+
+    #[test]
+    fn test_dec_e_carry() {
+        let mut cpu = CPU {
+            registers: { Default::default() },
+        };
+        cpu.registers.e = 0;
+        cpu.execute(Instruction::DEC(ArithmeticTarget::E));
+
+        assert_eq!(cpu.registers.e, 0_u8.wrapping_sub(1));
+
+        // Shouldn't indicate carry on "dec" operation
+        assert!(!cpu.registers.f.carry);
+        assert!(cpu.registers.f.subtract);
+        assert!(!cpu.registers.f.zero);
+        assert!(cpu.registers.f.half_carry);
     }
 }
