@@ -148,6 +148,16 @@ enum Instruction {
     LD(ShortMemoryTarget, ShortMemoryTarget),
     PUSH(LongMemoryTarget),
     POP(LongMemoryTarget),
+    JP(Option<ControlFlowFlag>, LongMemoryTarget),
+    JR(Option<ControlFlowFlag>, ShortMemoryTarget),
+}
+
+#[derive(Clone, PartialEq, EnumIter)]
+enum ControlFlowFlag {
+    Zero,
+    NonZero,
+    Carry,
+    NonCarry,
 }
 
 /* The order here is the same as it is in the opcodes */
@@ -202,6 +212,8 @@ enum LongMemoryTarget {
     DE,
     HL,
     SP,
+    ADDR_HL,
+    CONSTANT(u16),
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -403,7 +415,10 @@ impl Instruction {
                 ShortMemoryTarget::CONSTANT(next_byte),
             )),
             0x17 => Some(Instruction::RLA),
-            0x18 => None, // JR r8
+            0x18 => Some(Instruction::JR(
+                None,
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x19 => Some(Instruction::ADDHL(LongArithmeticTarget::DE)),
             0x1A => Some(Instruction::LD(
                 ShortMemoryTarget::A,
@@ -423,7 +438,10 @@ impl Instruction {
                 ShortMemoryTarget::CONSTANT(next_byte),
             )),
             0x1F => Some(Instruction::RRA),
-            0x20 => None, // JR NZ, r8
+            0x20 => Some(Instruction::JR(
+                Some(ControlFlowFlag::NonZero),
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x21 => None, // LD HL, d16 (constant I guess?)
             0x22 => None, // LD (HL+), A
             0x23 => Some(Instruction::INC(ArithmeticTarget::Long(
@@ -440,7 +458,10 @@ impl Instruction {
                 ShortMemoryTarget::CONSTANT(next_byte),
             )),
             0x27 => None, // DAA
-            0x28 => None, // JR Z, r8
+            0x28 => Some(Instruction::JR(
+                Some(ControlFlowFlag::Zero),
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x29 => Some(Instruction::ADDHL(LongArithmeticTarget::HL)),
             0x2A => None, // LD A, (HL+)
             0x2B => Some(Instruction::DEC(ArithmeticTarget::Long(
@@ -457,7 +478,10 @@ impl Instruction {
                 ShortMemoryTarget::CONSTANT(next_byte),
             )),
             0x2F => Some(Instruction::CPL),
-            0x30 => None, // JR NC, r8
+            0x30 => Some(Instruction::JR(
+                Some(ControlFlowFlag::NonCarry),
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x31 => None, // LD SP, d16 (constant I guess?)
             0x32 => None, // LD (HL-), A
             0x33 => Some(Instruction::INC(ArithmeticTarget::Long(
@@ -474,7 +498,10 @@ impl Instruction {
                 ShortMemoryTarget::CONSTANT(next_byte),
             )),
             0x37 => Some(Instruction::SCF),
-            0x38 => None, // JR C, r8
+            0x38 => Some(Instruction::JR(
+                Some(ControlFlowFlag::Carry),
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x39 => Some(Instruction::ADDHL(LongArithmeticTarget::SP)),
             0x3A => None, // LD A, (HL-)
             0x3B => Some(Instruction::DEC(ArithmeticTarget::Long(
@@ -522,15 +549,24 @@ impl Instruction {
             )),
             0xC0 => None, // RET NZ
             0xC1 => Some(Instruction::POP(LongMemoryTarget::BC)),
-            0xC2 => None, // JP NZ, a16
-            0xC3 => None, // JP a16
+            0xC2 => Some(Instruction::JP(
+                Some(ControlFlowFlag::NonZero),
+                LongMemoryTarget::CONSTANT(next_2_bytes),
+            )),
+            0xC3 => Some(Instruction::JP(
+                None,
+                LongMemoryTarget::CONSTANT(next_2_bytes),
+            )),
             0xC4 => None, // CALL NZ, a16
             0xC5 => Some(Instruction::PUSH(LongMemoryTarget::BC)),
             0xC6 => Some(Instruction::ADD(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xC7 => None, // RST 00H
             0xC8 => None, // RET Z
             0xC9 => None, // RET
-            0xCA => None, // JP Z, a16
+            0xCA => Some(Instruction::JP(
+                Some(ControlFlowFlag::Zero),
+                LongMemoryTarget::CONSTANT(next_2_bytes),
+            )),
             0xCB => panic!("Shouldn't get here, should be handled in another function!"), // PREFIX CB
             0xCC => None, // CALL Z, a16
             0xCD => None, // CALL a16
@@ -538,14 +574,20 @@ impl Instruction {
             0xCF => None, // RST 08H
             0xD0 => None, // RET NC
             0xD1 => Some(Instruction::POP(LongMemoryTarget::DE)),
-            0xD2 => None, // JP NC, a16
+            0xD2 => Some(Instruction::JP(
+                Some(ControlFlowFlag::NonCarry),
+                LongMemoryTarget::CONSTANT(next_2_bytes),
+            )),
             0xD4 => None, // CALL NC, a16
             0xD5 => Some(Instruction::PUSH(LongMemoryTarget::DE)),
             0xD6 => Some(Instruction::SUB(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xD7 => None, // RST 10H
             0xD8 => None, // RET C
             0xD9 => None, // RETI
-            0xDA => None, // JP C, a16
+            0xDA => Some(Instruction::JP(
+                Some(ControlFlowFlag::Carry),
+                LongMemoryTarget::CONSTANT(next_2_bytes),
+            )),
             0xDC => None, // CALL C, a16
             0xDE => Some(Instruction::SBC(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xDF => None, // RST 18H
@@ -559,7 +601,7 @@ impl Instruction {
             0xE6 => Some(Instruction::AND(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xE7 => None, // RST 20H
             0xE8 => None, // ADD SP, r8
-            0xE9 => None, // JP (HL)
+            0xE9 => Some(Instruction::JP(None, LongMemoryTarget::ADDR_HL)),
             0xEA => Some(Instruction::LD(
                 ShortMemoryTarget::ADDR_CONSTANT(next_2_bytes),
                 ShortMemoryTarget::A,
@@ -715,6 +757,8 @@ impl CPU {
             LongMemoryTarget::DE => self.registers.get_de(),
             LongMemoryTarget::HL => self.registers.get_hl(),
             LongMemoryTarget::SP => self.registers.get_sp(),
+            LongMemoryTarget::ADDR_HL => self.bus.read_u16(self.registers.get_hl()),
+            LongMemoryTarget::CONSTANT(val) => *val,
         }
     }
 
@@ -725,7 +769,31 @@ impl CPU {
             LongMemoryTarget::DE => self.registers.set_de(value),
             LongMemoryTarget::HL => self.registers.set_hl(value),
             LongMemoryTarget::SP => self.registers.set_sp(value),
+            LongMemoryTarget::ADDR_HL => self.bus.write_u16(self.registers.get_hl(), value),
+            LongMemoryTarget::CONSTANT(_) => {
+                panic!("Shouldn't try to set constant long memory target")
+            }
         };
+    }
+
+    fn get_control_flow_flag_value(&self, flag: &ControlFlowFlag) -> bool {
+        match flag {
+            ControlFlowFlag::Zero => self.registers.f.zero,
+            ControlFlowFlag::NonZero => !self.registers.f.zero,
+            ControlFlowFlag::Carry => self.registers.f.carry,
+            ControlFlowFlag::NonCarry => !self.registers.f.carry,
+        }
+    }
+
+    fn set_control_flow_flag_value(&mut self, flag: &ControlFlowFlag) {
+        match flag {
+            ControlFlowFlag::Zero | ControlFlowFlag::NonZero => {
+                self.registers.f.zero = *flag == ControlFlowFlag::Zero;
+            }
+            ControlFlowFlag::Carry | ControlFlowFlag::NonCarry => {
+                self.registers.f.carry = *flag == ControlFlowFlag::Carry;
+            }
+        }
     }
 
     fn execute(&mut self, instruction: Instruction) {
@@ -892,6 +960,28 @@ impl CPU {
             Instruction::LD(dest, src) => {
                 let value = self.get_short_memory_target_value(&src);
                 self.set_short_memory_target_value(&dest, value);
+            }
+            Instruction::JP(flag_option, target) => {
+                if let Some(flag) = flag_option {
+                    if self.get_control_flow_flag_value(&flag) {
+                        self.pc = self.get_long_memory_target_value(&target);
+                    }
+                } else {
+                    self.pc = self.get_long_memory_target_value(&target);
+                }
+            }
+            Instruction::JR(flag_option, target) => {
+                if let Some(flag) = flag_option {
+                    if self.get_control_flow_flag_value(&flag) {
+                        self.pc = (self.pc as i16)
+                            .wrapping_add(self.get_short_memory_target_value(&target) as i8 as i16)
+                            as u16;
+                    }
+                } else {
+                    self.pc = (self.pc as i16)
+                        .wrapping_add(self.get_short_memory_target_value(&target) as i8 as i16)
+                        as u16;
+                }
             }
         }
     }
@@ -2378,5 +2468,81 @@ mod cpu_tests {
         assert_flags_arent_changed(&cpu);
 
         assert_eq!(cpu.bus.read_byte(ADDR2), VAL);
+    }
+
+    #[test]
+    fn test_jp_no_condition() {
+        const ADDR: u16 = 0x0123;
+
+        let mut cpu: CPU = Default::default();
+
+        cpu.execute(Instruction::JP(None, LongMemoryTarget::CONSTANT(ADDR)));
+
+        assert_eq!(cpu.pc, ADDR);
+
+        assert_flags_arent_changed(&cpu);
+    }
+
+    #[test]
+    fn test_jp_with_condition() {
+        let mut addr: u16 = 0x0123;
+
+        let mut cpu: CPU = Default::default();
+
+        for flag in ControlFlowFlag::iter() {
+            cpu.set_control_flow_flag_value(&flag);
+            cpu.execute(Instruction::JP(
+                Some(flag.clone()),
+                LongMemoryTarget::CONSTANT(addr),
+            ));
+
+            assert_eq!(cpu.pc, addr);
+            assert!(cpu.get_control_flow_flag_value(&flag));
+
+            addr += 1;
+        }
+    }
+
+    #[test]
+    fn test_jr_no_condition() {
+        const ADDR: u16 = 0x0123;
+        const DIFF: i8 = -89;
+
+        let mut cpu = CPU {
+            pc: ADDR,
+            ..Default::default()
+        };
+
+        cpu.execute(Instruction::JR(
+            None,
+            ShortMemoryTarget::CONSTANT(DIFF as u8),
+        ));
+
+        assert_eq!(cpu.pc, (ADDR as i16 + DIFF as i16) as u16);
+
+        assert_flags_arent_changed(&cpu);
+    }
+
+    #[test]
+    fn test_jr_with_condition() {
+        const ADDR: u16 = 0x0123;
+        let mut diff: i8 = -89;
+
+        let mut cpu: CPU = Default::default();
+
+        for flag in ControlFlowFlag::iter() {
+            cpu.pc = ADDR;
+
+            cpu.set_control_flow_flag_value(&flag);
+            cpu.execute(Instruction::JR(
+                Some(flag.clone()),
+                ShortMemoryTarget::CONSTANT(diff as u8),
+            ));
+
+            assert_eq!(cpu.pc, (ADDR as i16 + diff as i16) as u16);
+            assert!(cpu.get_control_flow_flag_value(&flag));
+
+            diff += 1;
+        }
     }
 }
