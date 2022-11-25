@@ -1,3 +1,6 @@
+#![allow(non_camel_case_types)]
+#![allow(clippy::upper_case_acronyms)]
+
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -1451,7 +1454,7 @@ mod cpu_tests {
         cpu.execute(Instruction::OR(ShortArithmeticTarget::L));
 
         assert_eq!(cpu.registers.l, 0x0);
-        assert_eq!(cpu.registers.a, 0x0 | 0x0);
+        assert_eq!(cpu.registers.a, 0x0);
 
         assert!(!cpu.registers.f.carry);
         assert!(!cpu.registers.f.subtract);
