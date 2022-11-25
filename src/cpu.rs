@@ -142,6 +142,9 @@ enum Instruction {
     BIT(u8, ShortArithmeticTarget),
     SET(u8, ShortArithmeticTarget),
     RESET(u8, ShortArithmeticTarget),
+    LD(ShortMemoryTarget, ShortMemoryTarget),
+    PUSH(LongMemoryTarget),
+    POP(LongMemoryTarget),
 }
 
 /* The order here is the same as it is in the opcodes */
@@ -167,6 +170,30 @@ enum LongArithmeticTarget {
 enum ArithmeticTarget {
     Short(ShortArithmeticTarget),
     Long(LongArithmeticTarget),
+}
+
+enum ShortMemoryTarget {
+    B,
+    C,
+    D,
+    E,
+    H,
+    L,
+    ADDR_HL,
+    ADDR_BC,
+    ADDR_DE,
+    ADDR_C, // This is the address 0xFF00 + C
+    A,
+}
+
+const ADDR_C_PREFIX: u16 = 0xFF00;
+
+enum LongMemoryTarget {
+    AF,
+    BC,
+    DE,
+    HL,
+    SP,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -196,6 +223,18 @@ impl MemoryBus {
 
     fn write_byte(&mut self, address: u16, value: u8) {
         self.memory[address as usize] = value;
+    }
+
+    fn read_u16(&self, address: u16) -> u16 {
+        let first_byte: u16 = self.memory[address as usize].into();
+        let second_byte: u16 = self.memory[(address + 1) as usize].into();
+
+        (first_byte << 8) | second_byte
+    }
+
+    fn write_u16(&mut self, address: u16, value: u16) {
+        self.memory[address as usize] = (value >> 8) as u8;
+        self.memory[(address + 1) as usize] = (value & 0xFF) as u8;
     }
 }
 
@@ -254,7 +293,10 @@ impl Instruction {
         match byte {
             0x00 => Some(Instruction::NOP),
             0x01 => None, // LD BC, d16 (constant I guess?)
-            0x02 => None, // LD (BC), A
+            0x02 => Some(Instruction::LD(
+                ShortMemoryTarget::ADDR_BC,
+                ShortMemoryTarget::A,
+            )),
             0x03 => Some(Instruction::INC(ArithmeticTarget::Long(
                 LongArithmeticTarget::BC,
             ))),
@@ -268,7 +310,10 @@ impl Instruction {
             0x07 => Some(Instruction::RLCA),
             0x08 => None, // LD (a16), SP
             0x09 => Some(Instruction::ADDHL(LongArithmeticTarget::BC)),
-            0x0A => None, // LD A, (BC)
+            0x0A => Some(Instruction::LD(
+                ShortMemoryTarget::A,
+                ShortMemoryTarget::ADDR_BC,
+            )),
             0x0B => Some(Instruction::DEC(ArithmeticTarget::Long(
                 LongArithmeticTarget::BC,
             ))),
@@ -282,7 +327,10 @@ impl Instruction {
             0x0F => Some(Instruction::RRCA),
             0x10 => None, // STOP 0
             0x11 => None, // LD DE, d16
-            0x12 => None, // LD (DE), A
+            0x12 => Some(Instruction::LD(
+                ShortMemoryTarget::ADDR_DE,
+                ShortMemoryTarget::A,
+            )),
             0x13 => Some(Instruction::INC(ArithmeticTarget::Long(
                 LongArithmeticTarget::DE,
             ))),
@@ -296,7 +344,10 @@ impl Instruction {
             0x17 => Some(Instruction::RLA),
             0x18 => None, // JR r8
             0x19 => Some(Instruction::ADDHL(LongArithmeticTarget::DE)),
-            0x1A => None, // LD A, (DE)
+            0x1A => Some(Instruction::LD(
+                ShortMemoryTarget::A,
+                ShortMemoryTarget::ADDR_DE,
+            )),
             0x1B => Some(Instruction::DEC(ArithmeticTarget::Long(
                 LongArithmeticTarget::DE,
             ))),
@@ -374,11 +425,69 @@ impl Instruction {
             0xA8..=0xAF => Some(Instruction::XOR(Instruction::short_target_from_byte(byte)?)),
             0xB0..=0xB7 => Some(Instruction::OR(Instruction::short_target_from_byte(byte)?)),
             0xB8..=0xBF => Some(Instruction::CP(Instruction::short_target_from_byte(byte)?)),
-            _ =>
-            /* TODO: Add mapping for rest of instructions */
-            {
-                None
-            }
+            0xC0 => None, // RET NZ
+            0xC1 => Some(Instruction::POP(LongMemoryTarget::BC)),
+            0xC2 => None, // JP NZ, a16
+            0xC3 => None, // JP a16
+            0xC4 => None, // CALL NZ, a16
+            0xC5 => Some(Instruction::PUSH(LongMemoryTarget::BC)),
+            0xC6 => None, // ADD A, d8
+            0xC7 => None, // RST 00H
+            0xC8 => None, // RET Z
+            0xC9 => None, // RET
+            0xCA => None, // JP Z, a16
+            0xCB => panic!("Shouldn't get here, should be handled in another function!"), // PREFIX CB
+            0xCC => None, // CALL Z, a16
+            0xCD => None, // CALL a16
+            0xCE => None, // ADC A, d8
+            0xCF => None, // RST 08H
+            0xD0 => None, // RET NC
+            0xD1 => Some(Instruction::POP(LongMemoryTarget::DE)),
+            0xD2 => None, // JP NC, a16
+            0xD4 => None, // CALL NC, a16
+            0xD5 => Some(Instruction::PUSH(LongMemoryTarget::DE)),
+            0xD6 => None, // SUB d8
+            0xD7 => None, // RST 10H
+            0xD8 => None, // RET C
+            0xD9 => None, // RETI
+            0xDA => None, // JP C, a16
+            0xDC => None, // CALL C, a16
+            0xDE => None, // SBC A, d8
+            0xDF => None, // RST 18H
+            0xE0 => None, // LDH (a8), A
+            0xE1 => Some(Instruction::POP(LongMemoryTarget::HL)),
+            0xE2 => Some(Instruction::LD(
+                ShortMemoryTarget::ADDR_C,
+                ShortMemoryTarget::A,
+            )),
+            0xE5 => Some(Instruction::PUSH(LongMemoryTarget::HL)),
+            0xE6 => None, // AND d8
+            0xE7 => None, // RST 20H
+            0xE8 => None, // ADD SP, r8
+            0xE9 => None, // JP (HL)
+            0xEA => None, // LD (a16), A
+            0xEC => None, // CALL C, a16
+            0xEE => None, // XOR d8
+            0xEF => None, // RST 28H
+            0xF0 => None, // LDH A, (a8)
+            0xF1 => Some(Instruction::POP(LongMemoryTarget::AF)),
+            0xF2 => Some(Instruction::LD(
+                ShortMemoryTarget::A,
+                ShortMemoryTarget::ADDR_C,
+            )),
+            0xF3 => None, // DI
+            0xF5 => Some(Instruction::PUSH(LongMemoryTarget::AF)),
+            0xF6 => None, // OR d8
+            0xF7 => None, // RST 30H
+            0xF8 => None, // LD HL, SP+r8
+            0xF9 => None, // LD SP, HL
+            0xFA => None, // LD A, (a16)
+            0xFB => None, // EI
+            0xFE => None, // CP d8
+            0xFF => None, // RST 38H
+
+            /* mapping for undefined instructions */
+            0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => None,
         }
     }
 }
@@ -448,6 +557,62 @@ impl CPU {
             LongArithmeticTarget::DE => self.registers.set_de(value),
             LongArithmeticTarget::HL => self.registers.set_hl(value),
             LongArithmeticTarget::SP => self.registers.set_sp(value),
+        };
+    }
+
+    fn get_short_memory_target_value(&self, target: &ShortMemoryTarget) -> u8 {
+        match target {
+            ShortMemoryTarget::A => self.registers.a,
+            ShortMemoryTarget::B => self.registers.b,
+            ShortMemoryTarget::C => self.registers.c,
+            ShortMemoryTarget::D => self.registers.d,
+            ShortMemoryTarget::E => self.registers.e,
+            ShortMemoryTarget::H => self.registers.h,
+            ShortMemoryTarget::L => self.registers.l,
+            ShortMemoryTarget::ADDR_HL => self.bus.read_byte(self.registers.get_hl()),
+            ShortMemoryTarget::ADDR_BC => self.bus.read_byte(self.registers.get_bc()),
+            ShortMemoryTarget::ADDR_DE => self.bus.read_byte(self.registers.get_de()),
+            ShortMemoryTarget::ADDR_C => {
+                self.bus.read_byte(ADDR_C_PREFIX + self.registers.c as u16)
+            }
+        }
+    }
+
+    fn set_short_memory_target_value(&mut self, target: &ShortMemoryTarget, value: u8) {
+        match target {
+            ShortMemoryTarget::A => self.registers.a = value,
+            ShortMemoryTarget::B => self.registers.b = value,
+            ShortMemoryTarget::C => self.registers.c = value,
+            ShortMemoryTarget::D => self.registers.d = value,
+            ShortMemoryTarget::E => self.registers.e = value,
+            ShortMemoryTarget::H => self.registers.h = value,
+            ShortMemoryTarget::L => self.registers.l = value,
+            ShortMemoryTarget::ADDR_HL => self.bus.write_byte(self.registers.get_hl(), value),
+            ShortMemoryTarget::ADDR_BC => self.bus.write_byte(self.registers.get_bc(), value),
+            ShortMemoryTarget::ADDR_DE => self.bus.write_byte(self.registers.get_de(), value),
+            ShortMemoryTarget::ADDR_C => self
+                .bus
+                .write_byte(ADDR_C_PREFIX + self.registers.c as u16, value),
+        };
+    }
+
+    fn get_long_memory_target_value(&self, target: &LongMemoryTarget) -> u16 {
+        match target {
+            LongMemoryTarget::AF => self.registers.get_af(),
+            LongMemoryTarget::BC => self.registers.get_bc(),
+            LongMemoryTarget::DE => self.registers.get_de(),
+            LongMemoryTarget::HL => self.registers.get_hl(),
+            LongMemoryTarget::SP => self.registers.get_sp(),
+        }
+    }
+
+    fn set_long_memory_target_value(&mut self, target: &LongMemoryTarget, value: u16) {
+        match target {
+            LongMemoryTarget::AF => self.registers.set_af(value),
+            LongMemoryTarget::BC => self.registers.set_bc(value),
+            LongMemoryTarget::DE => self.registers.set_de(value),
+            LongMemoryTarget::HL => self.registers.set_hl(value),
+            LongMemoryTarget::SP => self.registers.set_sp(value),
         };
     }
 
@@ -604,6 +769,17 @@ impl CPU {
                 let value = self.get_short_arithmetic_target_value(&target);
                 let result = self.reset(bit, value);
                 self.set_short_arithmetic_target_value(&target, result);
+            }
+            Instruction::PUSH(target) => {
+                self.push(self.get_long_memory_target_value(&target));
+            }
+            Instruction::POP(target) => {
+                let value = self.pop();
+                self.set_long_memory_target_value(&target, value);
+            }
+            Instruction::LD(dest, src) => {
+                let value = self.get_short_memory_target_value(&src);
+                self.set_short_memory_target_value(&dest, value);
             }
         }
     }
@@ -857,11 +1033,30 @@ impl CPU {
     fn reset(&mut self, bit: u8, value: u8) -> u8 {
         value & !(1 << bit)
     }
+
+    fn push(&mut self, value: u16) {
+        self.registers.sp = self.registers.sp.wrapping_sub(2);
+        self.bus.write_u16(self.registers.sp, value);
+    }
+
+    fn pop(&mut self) -> u16 {
+        let value = self.bus.read_u16(self.registers.sp);
+        self.registers.sp = self.registers.sp.wrapping_add(2);
+
+        value
+    }
 }
 
 #[cfg(test)]
 mod cpu_tests {
     use crate::cpu::*;
+
+    fn assert_flags_arent_changed(cpu: &CPU) {
+        assert!(!cpu.registers.f.zero);
+        assert!(!cpu.registers.f.carry);
+        assert!(!cpu.registers.f.subtract);
+        assert!(!cpu.registers.f.half_carry);
+    }
 
     #[test]
     fn test_add_c() {
@@ -872,10 +1067,8 @@ mod cpu_tests {
 
         assert_eq!(cpu.registers.c, 7);
         assert_eq!(cpu.registers.a, (7 + 6) as u8);
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -918,10 +1111,8 @@ mod cpu_tests {
 
         assert_eq!(cpu.registers.b, 7);
         assert_eq!(cpu.registers.a, (7 + 6 + 1) as u8);
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1140,10 +1331,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.l, 0xf0);
         assert_eq!(cpu.registers.a, 0xf0 | 0x0f);
 
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1186,10 +1374,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.b, 0xf0);
         assert_eq!(cpu.registers.a, 0xf0 ^ 0x0f);
 
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1266,10 +1451,7 @@ mod cpu_tests {
 
         assert_eq!(cpu.registers.d, 7 + 1);
 
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1282,11 +1464,8 @@ mod cpu_tests {
 
         assert_eq!(cpu.registers.d, 15 + 1);
 
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        // Shouldn't change on "inc" operation
-        assert!(!cpu.registers.f.half_carry);
+        // half-carry shouldn't change on "inc" operation
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1367,10 +1546,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.get_bc(), 8942);
         assert_eq!(cpu.registers.get_hl(), 10000 + 8942);
 
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1416,10 +1592,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.get_de(), 7 + 1);
 
         // Shouldn't update flags register on long inc
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1433,10 +1606,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.get_de(), 0xFFF + 1);
 
         // Shouldn't update flags register on long inc
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1450,10 +1620,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.get_de(), u16::MAX.wrapping_add(1));
 
         // Shouldn't update flags register on long inc
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1467,10 +1634,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.get_hl(), 7 - 1);
 
         // Shouldn't update flags register on long dec
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1484,10 +1648,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.get_hl(), 0_u16.wrapping_sub(1));
 
         // Shouldn't update flags register on long dec
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1501,10 +1662,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.get_hl(), 0);
 
         // Shouldn't update flags register on long dec
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1516,10 +1674,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.a, 0x37);
 
         // Everything should be false except for zero which depends on the value
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1612,10 +1767,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.a, 0b11010111);
 
         // Only "calculate" carry flag which should be false
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1646,10 +1798,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.a, 0b01010111);
 
         // Only "calculate" carry flag which should be false
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1680,10 +1829,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.a, 0b11101011);
 
         // Only "calculate" carry flag which should be false
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1714,10 +1860,7 @@ mod cpu_tests {
         assert_eq!(cpu.registers.a, 0b11101010);
 
         // Only "calculate" carry flag which should be false
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1747,10 +1890,7 @@ mod cpu_tests {
 
         assert_eq!(cpu.registers.a, 0b11010111);
 
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1779,10 +1919,7 @@ mod cpu_tests {
 
         assert_eq!(cpu.registers.b, 0b01010111);
 
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1827,10 +1964,7 @@ mod cpu_tests {
 
         assert_eq!(cpu.registers.c, 0b11101011);
 
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -1859,10 +1993,7 @@ mod cpu_tests {
 
         assert_eq!(cpu.registers.d, 0b11101010);
 
-        assert!(!cpu.registers.f.carry);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.half_carry);
+        assert_flags_arent_changed(&cpu);
     }
 
     #[test]
@@ -2029,11 +2160,7 @@ mod cpu_tests {
             // Shouldn't change
             assert_eq!(cpu.registers.b, val);
 
-            // Flags are not changed
-            assert!(!cpu.registers.f.zero);
-            assert!(!cpu.registers.f.carry);
-            assert!(!cpu.registers.f.subtract);
-            assert!(!cpu.registers.f.half_carry);
+            assert_flags_arent_changed(&cpu);
         }
     }
 
@@ -2050,11 +2177,94 @@ mod cpu_tests {
             // Shouldn't change
             assert_eq!(cpu.registers.c, val);
 
-            // Flags are not changed
-            assert!(!cpu.registers.f.zero);
-            assert!(!cpu.registers.f.carry);
-            assert!(!cpu.registers.f.subtract);
-            assert!(!cpu.registers.f.half_carry);
+            assert_flags_arent_changed(&cpu);
         }
+    }
+
+    #[test]
+    fn test_push_hl() {
+        const VAL: u16 = 0x1234;
+        const ADDR: u16 = 0x0123;
+
+        let mut cpu: CPU = Default::default();
+        cpu.registers.set_hl(VAL);
+        cpu.registers.set_sp(ADDR);
+
+        cpu.execute(Instruction::PUSH(LongMemoryTarget::HL));
+
+        // Shouldn't change
+        assert_eq!(cpu.registers.get_hl(), VAL);
+        assert_flags_arent_changed(&cpu);
+
+        // SP get 2 subtracted from it
+        assert_eq!(cpu.registers.get_sp(), ADDR - 2);
+        assert_eq!(cpu.bus.read_u16(ADDR - 2), VAL);
+    }
+
+    #[test]
+    fn test_pop_bc() {
+        const VAL: u16 = 0x1234;
+        const ADDR: u16 = 0x0123;
+
+        let mut cpu: CPU = Default::default();
+        cpu.bus.write_u16(ADDR, VAL);
+        cpu.registers.set_sp(ADDR);
+
+        cpu.execute(Instruction::POP(LongMemoryTarget::BC));
+
+        // Shouldn't change
+        assert_eq!(cpu.bus.read_u16(ADDR), VAL);
+        assert_flags_arent_changed(&cpu);
+
+        // SP get 2 subtracted from it
+        assert_eq!(cpu.registers.get_sp(), ADDR + 2);
+        assert_eq!(cpu.registers.get_bc(), VAL);
+    }
+
+    #[test]
+    fn test_ld_c_addr_de() {
+        const VAL: u8 = 0x34;
+        const ADDR: u16 = 0x0123;
+
+        let mut cpu: CPU = Default::default();
+        cpu.bus.write_byte(ADDR, VAL);
+        cpu.registers.set_de(ADDR);
+
+        cpu.execute(Instruction::LD(
+            ShortMemoryTarget::C,
+            ShortMemoryTarget::ADDR_DE,
+        ));
+
+        // Shouldn't change
+        assert_eq!(cpu.bus.read_byte(ADDR), VAL);
+        assert_eq!(cpu.registers.get_de(), ADDR);
+        assert_flags_arent_changed(&cpu);
+
+        assert_eq!(cpu.registers.c, VAL);
+    }
+
+    #[test]
+    fn test_ld_addr_de_addr_bc() {
+        const VAL: u8 = 0x3f;
+        const ADDR1: u16 = 0x0123;
+        const ADDR2: u16 = 0x7777;
+
+        let mut cpu: CPU = Default::default();
+        cpu.bus.write_byte(ADDR1, VAL);
+        cpu.registers.set_bc(ADDR1);
+        cpu.registers.set_de(ADDR2);
+
+        cpu.execute(Instruction::LD(
+            ShortMemoryTarget::ADDR_DE,
+            ShortMemoryTarget::ADDR_BC,
+        ));
+
+        // Shouldn't change
+        assert_eq!(cpu.bus.read_byte(ADDR1), VAL);
+        assert_eq!(cpu.registers.get_bc(), ADDR1);
+        assert_eq!(cpu.registers.get_de(), ADDR2);
+        assert_flags_arent_changed(&cpu);
+
+        assert_eq!(cpu.bus.read_byte(ADDR2), VAL);
     }
 }
