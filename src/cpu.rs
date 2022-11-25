@@ -61,6 +61,7 @@ struct Registers {
     f: FlagsRegister,
     h: u8,
     l: u8,
+    sp: u16,
 }
 
 impl Registers {
@@ -99,6 +100,14 @@ impl Registers {
     fn set_hl(&mut self, val: u16) {
         self.h = (val >> 8) as u8;
         self.l = val as u8;
+    }
+
+    fn get_sp(&self) -> u16 {
+        self.sp
+    }
+
+    fn set_sp(&mut self, val: u16) {
+        self.sp = val;
     }
 }
 
@@ -152,6 +161,7 @@ enum LongArithmeticTarget {
     BC,
     DE,
     HL,
+    SP,
 }
 
 enum ArithmeticTarget {
@@ -298,7 +308,62 @@ impl Instruction {
             ))),
             0x1E => None, // LD E, d8 (constant I guess?)
             0x1F => Some(Instruction::RRA),
-
+            0x20 => None, // JR NZ, r8
+            0x21 => None, // LD HL, d16 (constant I guess?)
+            0x22 => None, // LD (HL+), A
+            0x23 => Some(Instruction::INC(ArithmeticTarget::Long(
+                LongArithmeticTarget::HL,
+            ))),
+            0x24 => Some(Instruction::INC(ArithmeticTarget::Short(
+                ShortArithmeticTarget::H,
+            ))),
+            0x25 => Some(Instruction::DEC(ArithmeticTarget::Short(
+                ShortArithmeticTarget::H,
+            ))),
+            0x26 => None, // LD H, d8 (constant I guess?)
+            0x27 => None, // DAA
+            0x28 => None, // JR Z, r8
+            0x29 => Some(Instruction::ADDHL(LongArithmeticTarget::HL)),
+            0x2A => None, // LD A, (HL+)
+            0x2B => Some(Instruction::DEC(ArithmeticTarget::Long(
+                LongArithmeticTarget::HL,
+            ))),
+            0x2C => Some(Instruction::INC(ArithmeticTarget::Short(
+                ShortArithmeticTarget::L,
+            ))),
+            0x2D => Some(Instruction::DEC(ArithmeticTarget::Short(
+                ShortArithmeticTarget::L,
+            ))),
+            0x2E => None, // LD L, d8 (constant I guess?)
+            0x2F => Some(Instruction::CPL),
+            0x30 => None, // JR NC, r8
+            0x31 => None, // LD SP, d16 (constant I guess?)
+            0x32 => None, // LD (HL-), A
+            0x33 => Some(Instruction::INC(ArithmeticTarget::Long(
+                LongArithmeticTarget::SP,
+            ))),
+            0x34 => Some(Instruction::INC(ArithmeticTarget::Short(
+                ShortArithmeticTarget::ADDR_HL,
+            ))),
+            0x35 => Some(Instruction::DEC(ArithmeticTarget::Short(
+                ShortArithmeticTarget::ADDR_HL,
+            ))),
+            0x36 => None, // LD (HL), d8 (constant I guess?)
+            0x37 => Some(Instruction::SCF),
+            0x38 => None, // JR C, r8
+            0x39 => Some(Instruction::ADDHL(LongArithmeticTarget::SP)),
+            0x3A => None, // LD A, (HL-)
+            0x3B => Some(Instruction::DEC(ArithmeticTarget::Long(
+                LongArithmeticTarget::SP,
+            ))),
+            0x3C => Some(Instruction::INC(ArithmeticTarget::Short(
+                ShortArithmeticTarget::A,
+            ))),
+            0x3D => Some(Instruction::DEC(ArithmeticTarget::Short(
+                ShortArithmeticTarget::A,
+            ))),
+            0x3E => None, // LD A, d8 (constant I guess?)
+            0x3F => Some(Instruction::CCF),
             0x40..=0x75 | 0x77..=0x7F => None, // LD calculate dest use short_target_from_byte() for src
             0x76 => None,                      // HALT
             0x80..=0x87 => Some(Instruction::ADD(Instruction::short_target_from_byte(byte)?)),
@@ -373,6 +438,7 @@ impl CPU {
             LongArithmeticTarget::BC => self.registers.get_bc(),
             LongArithmeticTarget::DE => self.registers.get_de(),
             LongArithmeticTarget::HL => self.registers.get_hl(),
+            LongArithmeticTarget::SP => self.registers.get_sp(),
         }
     }
 
@@ -381,6 +447,7 @@ impl CPU {
             LongArithmeticTarget::BC => self.registers.set_bc(value),
             LongArithmeticTarget::DE => self.registers.set_de(value),
             LongArithmeticTarget::HL => self.registers.set_hl(value),
+            LongArithmeticTarget::SP => self.registers.set_sp(value),
         };
     }
 
