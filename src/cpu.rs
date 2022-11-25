@@ -19,10 +19,10 @@ const CARRY_FLAG_BYTE_POSITION: u8 = 4;
 
 impl std::convert::From<FlagsRegister> for u8 {
     fn from(flag: FlagsRegister) -> u8 {
-        (if flag.zero { 1 } else { 0 }) << ZERO_FLAG_BYTE_POSITION
-            | (if flag.subtract { 1 } else { 0 }) << SUBTRACT_FLAG_BYTE_POSITION
-            | (if flag.half_carry { 1 } else { 0 }) << HALF_CARRY_FLAG_BYTE_POSITION
-            | (if flag.carry { 1 } else { 0 }) << CARRY_FLAG_BYTE_POSITION
+        (u8::from(flag.zero)) << ZERO_FLAG_BYTE_POSITION
+            | u8::from(flag.subtract) << SUBTRACT_FLAG_BYTE_POSITION
+            | u8::from(flag.half_carry) << HALF_CARRY_FLAG_BYTE_POSITION
+            | u8::from(flag.carry) << CARRY_FLAG_BYTE_POSITION
     }
 }
 
@@ -145,7 +145,7 @@ enum Instruction {
     BIT(u8, ShortArithmeticTarget),
     SET(u8, ShortArithmeticTarget),
     RESET(u8, ShortArithmeticTarget),
-    LD(ShortMemoryTarget, ShortMemoryTarget),
+    LD(MemoryTarget, MemoryTarget),
     PUSH(LongMemoryTarget),
     POP(LongMemoryTarget),
     JP(Option<ControlFlowFlag>, LongMemoryTarget),
@@ -212,12 +212,19 @@ enum LongMemoryTarget {
     DE,
     HL,
     SP,
+    SP_PLUS(i8),
     ADDR_HL,
     CONSTANT(u16),
+    ADDR_CONSTANT(u16),
+}
+
+enum MemoryTarget {
+    Short(ShortMemoryTarget),
+    Long(LongMemoryTarget),
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
-struct CPU {
+pub struct CPU {
     registers: Registers,
     pc: u16,
     bus: MemoryBus,
@@ -296,9 +303,9 @@ impl Instruction {
 
     fn extra_bytes(&self) -> u16 {
         match self {
-            Instruction::LD(_, ShortMemoryTarget::CONSTANT(_)) => 1,
-            Instruction::LD(_, ShortMemoryTarget::ADDR_CONSTANT(_)) => 2,
-            Instruction::LD(ShortMemoryTarget::ADDR_CONSTANT(_), _) => 2,
+            Instruction::LD(_, MemoryTarget::Short(ShortMemoryTarget::CONSTANT(_))) => 1,
+            Instruction::LD(_, MemoryTarget::Short(ShortMemoryTarget::ADDR_CONSTANT(_))) => 2,
+            Instruction::LD(MemoryTarget::Short(ShortMemoryTarget::ADDR_CONSTANT(_)), _) => 2,
             Instruction::ADD(ShortArithmeticTarget::CONSTANT(_)) => 1,
             Instruction::ADC(ShortArithmeticTarget::CONSTANT(_)) => 1,
             Instruction::SUB(ShortArithmeticTarget::CONSTANT(_)) => 1,
@@ -349,17 +356,20 @@ impl Instruction {
                 Instruction::get_bit_opcode_arg_from_prefixed_byte(byte),
                 Instruction::short_arithmetic_target_from_byte(byte)?,
             )),
-            _ => None, // Shouldn't get here ever as we covered all values which are possible after the and operation
+            _ => unreachable!("Shouldn't get here ever as we covered all values which are possible after the and operation"),
         }
     }
 
     fn from_byte_not_prefixed(byte: u8, next_byte: u8, next_2_bytes: u16) -> Option<Instruction> {
         match byte {
             0x00 => Some(Instruction::NOP),
-            0x01 => None, // LD BC, d16 (constant I guess?)
+            0x01 => Some(Instruction::LD(
+                MemoryTarget::Long(LongMemoryTarget::BC),
+                MemoryTarget::Long(LongMemoryTarget::CONSTANT(next_2_bytes)),
+            )),
             0x02 => Some(Instruction::LD(
-                ShortMemoryTarget::ADDR_BC,
-                ShortMemoryTarget::A,
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_BC),
+                MemoryTarget::Short(ShortMemoryTarget::A),
             )),
             0x03 => Some(Instruction::INC(ArithmeticTarget::Long(
                 LongArithmeticTarget::BC,
@@ -371,15 +381,18 @@ impl Instruction {
                 ShortArithmeticTarget::B,
             ))),
             0x06 => Some(Instruction::LD(
-                ShortMemoryTarget::B,
-                ShortMemoryTarget::CONSTANT(next_byte),
+                MemoryTarget::Short(ShortMemoryTarget::B),
+                MemoryTarget::Short(ShortMemoryTarget::CONSTANT(next_byte)),
             )),
             0x07 => Some(Instruction::RLCA),
-            0x08 => None, // LD (a16), SP
+            0x08 => Some(Instruction::LD(
+                MemoryTarget::Long(LongMemoryTarget::ADDR_CONSTANT(next_2_bytes)),
+                MemoryTarget::Long(LongMemoryTarget::SP),
+            )),
             0x09 => Some(Instruction::ADDHL(LongArithmeticTarget::BC)),
             0x0A => Some(Instruction::LD(
-                ShortMemoryTarget::A,
-                ShortMemoryTarget::ADDR_BC,
+                MemoryTarget::Short(ShortMemoryTarget::A),
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_BC),
             )),
             0x0B => Some(Instruction::DEC(ArithmeticTarget::Long(
                 LongArithmeticTarget::BC,
@@ -391,15 +404,18 @@ impl Instruction {
                 ShortArithmeticTarget::C,
             ))),
             0x0E => Some(Instruction::LD(
-                ShortMemoryTarget::C,
-                ShortMemoryTarget::CONSTANT(next_byte),
+                MemoryTarget::Short(ShortMemoryTarget::C),
+                MemoryTarget::Short(ShortMemoryTarget::CONSTANT(next_byte)),
             )),
             0x0F => Some(Instruction::RRCA),
             0x10 => None, // STOP 0
-            0x11 => None, // LD DE, d16
+            0x11 => Some(Instruction::LD(
+                MemoryTarget::Long(LongMemoryTarget::DE),
+                MemoryTarget::Long(LongMemoryTarget::CONSTANT(next_2_bytes)),
+            )),
             0x12 => Some(Instruction::LD(
-                ShortMemoryTarget::ADDR_DE,
-                ShortMemoryTarget::A,
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_DE),
+                MemoryTarget::Short(ShortMemoryTarget::A),
             )),
             0x13 => Some(Instruction::INC(ArithmeticTarget::Long(
                 LongArithmeticTarget::DE,
@@ -411,8 +427,8 @@ impl Instruction {
                 ShortArithmeticTarget::D,
             ))),
             0x16 => Some(Instruction::LD(
-                ShortMemoryTarget::D,
-                ShortMemoryTarget::CONSTANT(next_byte),
+                MemoryTarget::Short(ShortMemoryTarget::D),
+                MemoryTarget::Short(ShortMemoryTarget::CONSTANT(next_byte)),
             )),
             0x17 => Some(Instruction::RLA),
             0x18 => Some(Instruction::JR(
@@ -421,8 +437,8 @@ impl Instruction {
             )),
             0x19 => Some(Instruction::ADDHL(LongArithmeticTarget::DE)),
             0x1A => Some(Instruction::LD(
-                ShortMemoryTarget::A,
-                ShortMemoryTarget::ADDR_DE,
+                MemoryTarget::Short(ShortMemoryTarget::A),
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_DE),
             )),
             0x1B => Some(Instruction::DEC(ArithmeticTarget::Long(
                 LongArithmeticTarget::DE,
@@ -434,15 +450,18 @@ impl Instruction {
                 ShortArithmeticTarget::E,
             ))),
             0x1E => Some(Instruction::LD(
-                ShortMemoryTarget::E,
-                ShortMemoryTarget::CONSTANT(next_byte),
+                MemoryTarget::Short(ShortMemoryTarget::E),
+                MemoryTarget::Short(ShortMemoryTarget::CONSTANT(next_byte)),
             )),
             0x1F => Some(Instruction::RRA),
             0x20 => Some(Instruction::JR(
                 Some(ControlFlowFlag::NonZero),
                 ShortMemoryTarget::CONSTANT(next_byte),
             )),
-            0x21 => None, // LD HL, d16 (constant I guess?)
+            0x21 => Some(Instruction::LD(
+                MemoryTarget::Long(LongMemoryTarget::HL),
+                MemoryTarget::Long(LongMemoryTarget::CONSTANT(next_2_bytes)),
+            )),
             0x22 => None, // LD (HL+), A
             0x23 => Some(Instruction::INC(ArithmeticTarget::Long(
                 LongArithmeticTarget::HL,
@@ -454,8 +473,8 @@ impl Instruction {
                 ShortArithmeticTarget::H,
             ))),
             0x26 => Some(Instruction::LD(
-                ShortMemoryTarget::H,
-                ShortMemoryTarget::CONSTANT(next_byte),
+                MemoryTarget::Short(ShortMemoryTarget::H),
+                MemoryTarget::Short(ShortMemoryTarget::CONSTANT(next_byte)),
             )),
             0x27 => None, // DAA
             0x28 => Some(Instruction::JR(
@@ -474,15 +493,18 @@ impl Instruction {
                 ShortArithmeticTarget::L,
             ))),
             0x2E => Some(Instruction::LD(
-                ShortMemoryTarget::L,
-                ShortMemoryTarget::CONSTANT(next_byte),
+                MemoryTarget::Short(ShortMemoryTarget::L),
+                MemoryTarget::Short(ShortMemoryTarget::CONSTANT(next_byte)),
             )),
             0x2F => Some(Instruction::CPL),
             0x30 => Some(Instruction::JR(
                 Some(ControlFlowFlag::NonCarry),
                 ShortMemoryTarget::CONSTANT(next_byte),
             )),
-            0x31 => None, // LD SP, d16 (constant I guess?)
+            0x31 => Some(Instruction::LD(
+                MemoryTarget::Long(LongMemoryTarget::SP),
+                MemoryTarget::Long(LongMemoryTarget::CONSTANT(next_2_bytes)),
+            )),
             0x32 => None, // LD (HL-), A
             0x33 => Some(Instruction::INC(ArithmeticTarget::Long(
                 LongArithmeticTarget::SP,
@@ -494,8 +516,8 @@ impl Instruction {
                 ShortArithmeticTarget::ADDR_HL,
             ))),
             0x36 => Some(Instruction::LD(
-                ShortMemoryTarget::ADDR_HL,
-                ShortMemoryTarget::CONSTANT(next_byte),
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_HL),
+                MemoryTarget::Short(ShortMemoryTarget::CONSTANT(next_byte)),
             )),
             0x37 => Some(Instruction::SCF),
             0x38 => Some(Instruction::JR(
@@ -514,13 +536,16 @@ impl Instruction {
                 ShortArithmeticTarget::A,
             ))),
             0x3E => Some(Instruction::LD(
-                ShortMemoryTarget::A,
-                ShortMemoryTarget::CONSTANT(next_byte),
+                MemoryTarget::Short(ShortMemoryTarget::A),
+                MemoryTarget::Short(ShortMemoryTarget::CONSTANT(next_byte)),
             )),
             0x3F => Some(Instruction::CCF),
             0x40..=0x75 | 0x77..=0x7F => {
                 let (dest, src) = Instruction::short_memory_targets_from_byte(byte);
-                Some(Instruction::LD(dest?, src?))
+                Some(Instruction::LD(
+                    MemoryTarget::Short(dest?),
+                    MemoryTarget::Short(src?),
+                ))
             }
             0x76 => None, // HALT
             0x80..=0x87 => Some(Instruction::ADD(
@@ -594,8 +619,8 @@ impl Instruction {
             0xE0 => None, // LDH (a8), A
             0xE1 => Some(Instruction::POP(LongMemoryTarget::HL)),
             0xE2 => Some(Instruction::LD(
-                ShortMemoryTarget::ADDR_C,
-                ShortMemoryTarget::A,
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_C),
+                MemoryTarget::Short(ShortMemoryTarget::A),
             )),
             0xE5 => Some(Instruction::PUSH(LongMemoryTarget::HL)),
             0xE6 => Some(Instruction::AND(ShortArithmeticTarget::CONSTANT(next_byte))),
@@ -603,27 +628,32 @@ impl Instruction {
             0xE8 => None, // ADD SP, r8
             0xE9 => Some(Instruction::JP(None, LongMemoryTarget::ADDR_HL)),
             0xEA => Some(Instruction::LD(
-                ShortMemoryTarget::ADDR_CONSTANT(next_2_bytes),
-                ShortMemoryTarget::A,
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_CONSTANT(next_2_bytes)),
+                MemoryTarget::Short(ShortMemoryTarget::A),
             )),
-            0xEC => None, // CALL C, a16
             0xEE => Some(Instruction::XOR(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xEF => None, // RST 28H
             0xF0 => None, // LDH A, (a8)
             0xF1 => Some(Instruction::POP(LongMemoryTarget::AF)),
             0xF2 => Some(Instruction::LD(
-                ShortMemoryTarget::A,
-                ShortMemoryTarget::ADDR_C,
+                MemoryTarget::Short(ShortMemoryTarget::A),
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_C),
             )),
             0xF3 => None, // DI
             0xF5 => Some(Instruction::PUSH(LongMemoryTarget::AF)),
             0xF6 => Some(Instruction::OR(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xF7 => None, // RST 30H
-            0xF8 => None, // LD HL, SP+r8
-            0xF9 => None, // LD SP, HL
+            0xF8 => Some(Instruction::LD(
+                MemoryTarget::Long(LongMemoryTarget::SP_PLUS(next_byte as i8)),
+                MemoryTarget::Long(LongMemoryTarget::HL),
+            )),
+            0xF9 => Some(Instruction::LD(
+                MemoryTarget::Long(LongMemoryTarget::SP),
+                MemoryTarget::Long(LongMemoryTarget::HL),
+            )),
             0xFA => Some(Instruction::LD(
-                ShortMemoryTarget::A,
-                ShortMemoryTarget::ADDR_CONSTANT(next_2_bytes),
+                MemoryTarget::Short(ShortMemoryTarget::A),
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_CONSTANT(next_2_bytes)),
             )),
             0xFB => None, // EI
             0xFE => None, // CP d8
@@ -636,7 +666,7 @@ impl Instruction {
 }
 
 impl CPU {
-    fn step(&mut self) {
+    pub fn step(&mut self) {
         let mut instruction_byte = self.bus.read_byte(self.pc);
         let prefixed = instruction_byte == 0xCB;
         if prefixed {
@@ -757,8 +787,12 @@ impl CPU {
             LongMemoryTarget::DE => self.registers.get_de(),
             LongMemoryTarget::HL => self.registers.get_hl(),
             LongMemoryTarget::SP => self.registers.get_sp(),
+            LongMemoryTarget::SP_PLUS(val) => {
+                (self.registers.get_sp() as i16).wrapping_add(*val as i16) as u16
+            }
             LongMemoryTarget::ADDR_HL => self.bus.read_u16(self.registers.get_hl()),
             LongMemoryTarget::CONSTANT(val) => *val,
+            LongMemoryTarget::ADDR_CONSTANT(addr) => self.bus.read_u16(*addr),
         }
     }
 
@@ -769,10 +803,14 @@ impl CPU {
             LongMemoryTarget::DE => self.registers.set_de(value),
             LongMemoryTarget::HL => self.registers.set_hl(value),
             LongMemoryTarget::SP => self.registers.set_sp(value),
+            LongMemoryTarget::SP_PLUS(_) => {
+                panic!("Shouldn't try to set SP_PLUS long memory target")
+            }
             LongMemoryTarget::ADDR_HL => self.bus.write_u16(self.registers.get_hl(), value),
             LongMemoryTarget::CONSTANT(_) => {
                 panic!("Shouldn't try to set constant long memory target")
             }
+            LongMemoryTarget::ADDR_CONSTANT(addr) => self.bus.write_u16(*addr, value),
         };
     }
 
@@ -785,6 +823,7 @@ impl CPU {
         }
     }
 
+    #[cfg(test)]
     fn set_control_flow_flag_value(&mut self, flag: &ControlFlowFlag) {
         match flag {
             ControlFlowFlag::Zero | ControlFlowFlag::NonZero => {
@@ -957,10 +996,7 @@ impl CPU {
                 let value = self.pop();
                 self.set_long_memory_target_value(&target, value);
             }
-            Instruction::LD(dest, src) => {
-                let value = self.get_short_memory_target_value(&src);
-                self.set_short_memory_target_value(&dest, value);
-            }
+            Instruction::LD(dest, src) => self.ld(dest, src),
             Instruction::JP(flag_option, target) => {
                 if let Some(flag) = flag_option {
                     if self.get_control_flow_flag_value(&flag) {
@@ -1246,6 +1282,20 @@ impl CPU {
         self.registers.sp = self.registers.sp.wrapping_add(2);
 
         value
+    }
+
+    fn ld(&mut self, dest: MemoryTarget, src: MemoryTarget) {
+        match (dest, src) {
+            (MemoryTarget::Short(s_dest), MemoryTarget::Short(s_src)) => {
+                let value = self.get_short_memory_target_value(&s_src);
+                self.set_short_memory_target_value(&s_dest, value);
+            }
+            (MemoryTarget::Long(l_dest), MemoryTarget::Long(l_src)) => {
+                let value = self.get_long_memory_target_value(&l_src);
+                self.set_long_memory_target_value(&l_dest, value);
+            }
+            _ => panic!("Can't LD short to long or long to short"),
+        }
     }
 }
 
@@ -2433,8 +2483,8 @@ mod cpu_tests {
         cpu.registers.set_de(ADDR);
 
         cpu.execute(Instruction::LD(
-            ShortMemoryTarget::C,
-            ShortMemoryTarget::ADDR_DE,
+            MemoryTarget::Short(ShortMemoryTarget::C),
+            MemoryTarget::Short(ShortMemoryTarget::ADDR_DE),
         ));
 
         // Shouldn't change
@@ -2457,8 +2507,8 @@ mod cpu_tests {
         cpu.registers.set_de(ADDR2);
 
         cpu.execute(Instruction::LD(
-            ShortMemoryTarget::ADDR_DE,
-            ShortMemoryTarget::ADDR_BC,
+            MemoryTarget::Short(ShortMemoryTarget::ADDR_DE),
+            MemoryTarget::Short(ShortMemoryTarget::ADDR_BC),
         ));
 
         // Shouldn't change
