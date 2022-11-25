@@ -158,6 +158,7 @@ enum ShortArithmeticTarget {
     L,
     ADDR_HL,
     A,
+    CONSTANT(u8),
 }
 
 enum LongArithmeticTarget {
@@ -172,6 +173,8 @@ enum ArithmeticTarget {
     Long(LongArithmeticTarget),
 }
 
+/* The order here is the same as it is in the opcodes 0x40-0x7F */
+#[derive(EnumIter)]
 enum ShortMemoryTarget {
     B,
     C,
@@ -180,10 +183,12 @@ enum ShortMemoryTarget {
     H,
     L,
     ADDR_HL,
+    A,
     ADDR_BC,
     ADDR_DE,
     ADDR_C, // This is the address 0xFF00 + C
-    A,
+    CONSTANT(u8),
+    ADDR_CONSTANT(u16),
 }
 
 const ADDR_C_PREFIX: u16 = 0xFF00;
@@ -241,16 +246,30 @@ impl MemoryBus {
 impl CPU {}
 
 impl Instruction {
-    fn from_byte(byte: u8, prefixed: bool) -> Option<Instruction> {
+    fn from_byte(
+        byte: u8,
+        prefixed: bool,
+        next_byte: u8,
+        next_2_bytes: u16,
+    ) -> Option<Instruction> {
         if prefixed {
             Instruction::from_byte_prefixed(byte)
         } else {
-            Instruction::from_byte_not_prefixed(byte)
+            Instruction::from_byte_not_prefixed(byte, next_byte, next_2_bytes)
         }
     }
 
-    fn short_target_from_byte(byte: u8) -> Option<ShortArithmeticTarget> {
+    fn short_arithmetic_target_from_byte(byte: u8) -> Option<ShortArithmeticTarget> {
         ShortArithmeticTarget::iter().nth((byte & 0x07) as usize)
+    }
+
+    fn short_memory_targets_from_byte(
+        byte: u8,
+    ) -> (Option<ShortMemoryTarget>, Option<ShortMemoryTarget>) {
+        (
+            ShortMemoryTarget::iter().nth((((byte >> 4) - 4) & 0x07) as usize),
+            ShortMemoryTarget::iter().nth((byte & 0x07) as usize),
+        )
     }
 
     /* Returns the bit for the opcode from the byte given.
@@ -260,36 +279,66 @@ impl Instruction {
         (byte & 0x38) >> 3
     }
 
+    fn extra_bytes(&self) -> u16 {
+        match self {
+            Instruction::LD(_, ShortMemoryTarget::CONSTANT(_)) => 1,
+            Instruction::LD(_, ShortMemoryTarget::ADDR_CONSTANT(_)) => 2,
+            Instruction::LD(ShortMemoryTarget::ADDR_CONSTANT(_), _) => 2,
+            Instruction::ADD(ShortArithmeticTarget::CONSTANT(_)) => 1,
+            Instruction::ADC(ShortArithmeticTarget::CONSTANT(_)) => 1,
+            Instruction::SUB(ShortArithmeticTarget::CONSTANT(_)) => 1,
+            Instruction::SBC(ShortArithmeticTarget::CONSTANT(_)) => 1,
+            Instruction::AND(ShortArithmeticTarget::CONSTANT(_)) => 1,
+            Instruction::XOR(ShortArithmeticTarget::CONSTANT(_)) => 1,
+            Instruction::OR(ShortArithmeticTarget::CONSTANT(_)) => 1,
+            _ => 0,
+        }
+    }
+
     fn from_byte_prefixed(byte: u8) -> Option<Instruction> {
         /* last 3 bits just tell us the register to use */
         match byte & 0xf8 {
-            0x00 => Some(Instruction::RLC(Instruction::short_target_from_byte(byte)?)),
-            0x08 => Some(Instruction::RRC(Instruction::short_target_from_byte(byte)?)),
-            0x10 => Some(Instruction::RL(Instruction::short_target_from_byte(byte)?)),
-            0x18 => Some(Instruction::RR(Instruction::short_target_from_byte(byte)?)),
-            0x20 => Some(Instruction::SLA(Instruction::short_target_from_byte(byte)?)),
-            0x28 => Some(Instruction::SRA(Instruction::short_target_from_byte(byte)?)),
-            0x30 => Some(Instruction::SWAP(Instruction::short_target_from_byte(
-                byte,
-            )?)),
-            0x38 => Some(Instruction::SRL(Instruction::short_target_from_byte(byte)?)),
+            0x00 => Some(Instruction::RLC(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0x08 => Some(Instruction::RRC(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0x10 => Some(Instruction::RL(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0x18 => Some(Instruction::RR(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0x20 => Some(Instruction::SLA(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0x28 => Some(Instruction::SRA(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0x30 => Some(Instruction::SWAP(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0x38 => Some(Instruction::SRL(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
             (0x40..=0x78) => Some(Instruction::BIT(
                 Instruction::get_bit_opcode_arg_from_prefixed_byte(byte),
-                Instruction::short_target_from_byte(byte)?,
+                Instruction::short_arithmetic_target_from_byte(byte)?,
             )),
             (0x80..=0xB8) => Some(Instruction::RESET(
                 Instruction::get_bit_opcode_arg_from_prefixed_byte(byte),
-                Instruction::short_target_from_byte(byte)?,
+                Instruction::short_arithmetic_target_from_byte(byte)?,
             )),
             (0xC0..=0xF8) => Some(Instruction::SET(
                 Instruction::get_bit_opcode_arg_from_prefixed_byte(byte),
-                Instruction::short_target_from_byte(byte)?,
+                Instruction::short_arithmetic_target_from_byte(byte)?,
             )),
             _ => None, // Shouldn't get here ever as we covered all values which are possible after the and operation
         }
     }
 
-    fn from_byte_not_prefixed(byte: u8) -> Option<Instruction> {
+    fn from_byte_not_prefixed(byte: u8, next_byte: u8, next_2_bytes: u16) -> Option<Instruction> {
         match byte {
             0x00 => Some(Instruction::NOP),
             0x01 => None, // LD BC, d16 (constant I guess?)
@@ -306,7 +355,10 @@ impl Instruction {
             0x05 => Some(Instruction::DEC(ArithmeticTarget::Short(
                 ShortArithmeticTarget::B,
             ))),
-            0x06 => None, // LD B, d8 (constant I guess?)
+            0x06 => Some(Instruction::LD(
+                ShortMemoryTarget::B,
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x07 => Some(Instruction::RLCA),
             0x08 => None, // LD (a16), SP
             0x09 => Some(Instruction::ADDHL(LongArithmeticTarget::BC)),
@@ -323,7 +375,10 @@ impl Instruction {
             0x0D => Some(Instruction::DEC(ArithmeticTarget::Short(
                 ShortArithmeticTarget::C,
             ))),
-            0x0E => None, // LD C, d8 (constant I guess?)
+            0x0E => Some(Instruction::LD(
+                ShortMemoryTarget::C,
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x0F => Some(Instruction::RRCA),
             0x10 => None, // STOP 0
             0x11 => None, // LD DE, d16
@@ -340,7 +395,10 @@ impl Instruction {
             0x15 => Some(Instruction::DEC(ArithmeticTarget::Short(
                 ShortArithmeticTarget::D,
             ))),
-            0x16 => None, // LD D, d8 (constant I guess?)
+            0x16 => Some(Instruction::LD(
+                ShortMemoryTarget::D,
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x17 => Some(Instruction::RLA),
             0x18 => None, // JR r8
             0x19 => Some(Instruction::ADDHL(LongArithmeticTarget::DE)),
@@ -357,7 +415,10 @@ impl Instruction {
             0x1D => Some(Instruction::DEC(ArithmeticTarget::Short(
                 ShortArithmeticTarget::E,
             ))),
-            0x1E => None, // LD E, d8 (constant I guess?)
+            0x1E => Some(Instruction::LD(
+                ShortMemoryTarget::E,
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x1F => Some(Instruction::RRA),
             0x20 => None, // JR NZ, r8
             0x21 => None, // LD HL, d16 (constant I guess?)
@@ -371,7 +432,10 @@ impl Instruction {
             0x25 => Some(Instruction::DEC(ArithmeticTarget::Short(
                 ShortArithmeticTarget::H,
             ))),
-            0x26 => None, // LD H, d8 (constant I guess?)
+            0x26 => Some(Instruction::LD(
+                ShortMemoryTarget::H,
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x27 => None, // DAA
             0x28 => None, // JR Z, r8
             0x29 => Some(Instruction::ADDHL(LongArithmeticTarget::HL)),
@@ -385,7 +449,10 @@ impl Instruction {
             0x2D => Some(Instruction::DEC(ArithmeticTarget::Short(
                 ShortArithmeticTarget::L,
             ))),
-            0x2E => None, // LD L, d8 (constant I guess?)
+            0x2E => Some(Instruction::LD(
+                ShortMemoryTarget::L,
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x2F => Some(Instruction::CPL),
             0x30 => None, // JR NC, r8
             0x31 => None, // LD SP, d16 (constant I guess?)
@@ -399,7 +466,10 @@ impl Instruction {
             0x35 => Some(Instruction::DEC(ArithmeticTarget::Short(
                 ShortArithmeticTarget::ADDR_HL,
             ))),
-            0x36 => None, // LD (HL), d8 (constant I guess?)
+            0x36 => Some(Instruction::LD(
+                ShortMemoryTarget::ADDR_HL,
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x37 => Some(Instruction::SCF),
             0x38 => None, // JR C, r8
             0x39 => Some(Instruction::ADDHL(LongArithmeticTarget::SP)),
@@ -413,25 +483,47 @@ impl Instruction {
             0x3D => Some(Instruction::DEC(ArithmeticTarget::Short(
                 ShortArithmeticTarget::A,
             ))),
-            0x3E => None, // LD A, d8 (constant I guess?)
+            0x3E => Some(Instruction::LD(
+                ShortMemoryTarget::A,
+                ShortMemoryTarget::CONSTANT(next_byte),
+            )),
             0x3F => Some(Instruction::CCF),
-            0x40..=0x75 | 0x77..=0x7F => None, // LD calculate dest use short_target_from_byte() for src
-            0x76 => None,                      // HALT
-            0x80..=0x87 => Some(Instruction::ADD(Instruction::short_target_from_byte(byte)?)),
-            0x88..=0x8F => Some(Instruction::ADC(Instruction::short_target_from_byte(byte)?)),
-            0x90..=0x97 => Some(Instruction::SUB(Instruction::short_target_from_byte(byte)?)),
-            0x98..=0x9F => Some(Instruction::SBC(Instruction::short_target_from_byte(byte)?)),
-            0xA0..=0xA7 => Some(Instruction::AND(Instruction::short_target_from_byte(byte)?)),
-            0xA8..=0xAF => Some(Instruction::XOR(Instruction::short_target_from_byte(byte)?)),
-            0xB0..=0xB7 => Some(Instruction::OR(Instruction::short_target_from_byte(byte)?)),
-            0xB8..=0xBF => Some(Instruction::CP(Instruction::short_target_from_byte(byte)?)),
+            0x40..=0x75 | 0x77..=0x7F => {
+                let (dest, src) = Instruction::short_memory_targets_from_byte(byte);
+                Some(Instruction::LD(dest?, src?))
+            }
+            0x76 => None, // HALT
+            0x80..=0x87 => Some(Instruction::ADD(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0x88..=0x8F => Some(Instruction::ADC(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0x90..=0x97 => Some(Instruction::SUB(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0x98..=0x9F => Some(Instruction::SBC(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0xA0..=0xA7 => Some(Instruction::AND(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0xA8..=0xAF => Some(Instruction::XOR(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0xB0..=0xB7 => Some(Instruction::OR(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
+            0xB8..=0xBF => Some(Instruction::CP(
+                Instruction::short_arithmetic_target_from_byte(byte)?,
+            )),
             0xC0 => None, // RET NZ
             0xC1 => Some(Instruction::POP(LongMemoryTarget::BC)),
             0xC2 => None, // JP NZ, a16
             0xC3 => None, // JP a16
             0xC4 => None, // CALL NZ, a16
             0xC5 => Some(Instruction::PUSH(LongMemoryTarget::BC)),
-            0xC6 => None, // ADD A, d8
+            0xC6 => Some(Instruction::ADD(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xC7 => None, // RST 00H
             0xC8 => None, // RET Z
             0xC9 => None, // RET
@@ -439,20 +531,20 @@ impl Instruction {
             0xCB => panic!("Shouldn't get here, should be handled in another function!"), // PREFIX CB
             0xCC => None, // CALL Z, a16
             0xCD => None, // CALL a16
-            0xCE => None, // ADC A, d8
+            0xCE => Some(Instruction::ADC(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xCF => None, // RST 08H
             0xD0 => None, // RET NC
             0xD1 => Some(Instruction::POP(LongMemoryTarget::DE)),
             0xD2 => None, // JP NC, a16
             0xD4 => None, // CALL NC, a16
             0xD5 => Some(Instruction::PUSH(LongMemoryTarget::DE)),
-            0xD6 => None, // SUB d8
+            0xD6 => Some(Instruction::SUB(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xD7 => None, // RST 10H
             0xD8 => None, // RET C
             0xD9 => None, // RETI
             0xDA => None, // JP C, a16
             0xDC => None, // CALL C, a16
-            0xDE => None, // SBC A, d8
+            0xDE => Some(Instruction::SBC(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xDF => None, // RST 18H
             0xE0 => None, // LDH (a8), A
             0xE1 => Some(Instruction::POP(LongMemoryTarget::HL)),
@@ -461,13 +553,16 @@ impl Instruction {
                 ShortMemoryTarget::A,
             )),
             0xE5 => Some(Instruction::PUSH(LongMemoryTarget::HL)),
-            0xE6 => None, // AND d8
+            0xE6 => Some(Instruction::AND(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xE7 => None, // RST 20H
             0xE8 => None, // ADD SP, r8
             0xE9 => None, // JP (HL)
-            0xEA => None, // LD (a16), A
+            0xEA => Some(Instruction::LD(
+                ShortMemoryTarget::ADDR_CONSTANT(next_2_bytes),
+                ShortMemoryTarget::A,
+            )),
             0xEC => None, // CALL C, a16
-            0xEE => None, // XOR d8
+            0xEE => Some(Instruction::XOR(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xEF => None, // RST 28H
             0xF0 => None, // LDH A, (a8)
             0xF1 => Some(Instruction::POP(LongMemoryTarget::AF)),
@@ -477,11 +572,14 @@ impl Instruction {
             )),
             0xF3 => None, // DI
             0xF5 => Some(Instruction::PUSH(LongMemoryTarget::AF)),
-            0xF6 => None, // OR d8
+            0xF6 => Some(Instruction::OR(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xF7 => None, // RST 30H
             0xF8 => None, // LD HL, SP+r8
             0xF9 => None, // LD SP, HL
-            0xFA => None, // LD A, (a16)
+            0xFA => Some(Instruction::LD(
+                ShortMemoryTarget::A,
+                ShortMemoryTarget::ADDR_CONSTANT(next_2_bytes),
+            )),
             0xFB => None, // EI
             0xFE => None, // CP d8
             0xFF => None, // RST 38H
@@ -499,11 +597,16 @@ impl CPU {
         if prefixed {
             instruction_byte = self.bus.read_byte(self.pc + 1);
         }
+        let end_of_instruction = self.pc + 1 + (prefixed as u16);
+        let next_byte = self.bus.read_byte(end_of_instruction);
+        let next_2_bytes = self.bus.read_u16(end_of_instruction);
 
-        let next_pc = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed)
+        let next_pc = if let Some(instruction) =
+            Instruction::from_byte(instruction_byte, prefixed, next_byte, next_2_bytes)
         {
+            let extra_bytes = instruction.extra_bytes();
             self.execute(instruction);
-            self.pc + 1 + (prefixed as u16)
+            end_of_instruction + extra_bytes
         } else {
             let description = format!(
                 "0x{}{:x}",
@@ -526,6 +629,7 @@ impl CPU {
             ShortArithmeticTarget::L => self.registers.l,
             // For calculations we can convert hl to u8
             ShortArithmeticTarget::ADDR_HL => self.bus.read_byte(self.registers.get_hl()),
+            ShortArithmeticTarget::CONSTANT(val) => *val,
         }
     }
 
@@ -539,6 +643,7 @@ impl CPU {
             ShortArithmeticTarget::H => self.registers.h = value,
             ShortArithmeticTarget::L => self.registers.l = value,
             ShortArithmeticTarget::ADDR_HL => self.bus.write_byte(self.registers.get_hl(), value),
+            ShortArithmeticTarget::CONSTANT(_) => panic!("Should never set value of constant"),
         };
     }
 
@@ -575,6 +680,8 @@ impl CPU {
             ShortMemoryTarget::ADDR_C => {
                 self.bus.read_byte(ADDR_C_PREFIX + self.registers.c as u16)
             }
+            ShortMemoryTarget::CONSTANT(val) => *val,
+            ShortMemoryTarget::ADDR_CONSTANT(addr) => self.bus.read_byte(*addr),
         }
     }
 
@@ -593,6 +700,8 @@ impl CPU {
             ShortMemoryTarget::ADDR_C => self
                 .bus
                 .write_byte(ADDR_C_PREFIX + self.registers.c as u16, value),
+            ShortMemoryTarget::CONSTANT(_) => panic!("Should never set value of constant"),
+            ShortMemoryTarget::ADDR_CONSTANT(addr) => self.bus.write_byte(*addr, value),
         };
     }
 
