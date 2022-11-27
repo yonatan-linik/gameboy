@@ -150,6 +150,7 @@ enum Instruction {
     POP(LongMemoryTarget),
     JP(Option<ControlFlowFlag>, LongMemoryTarget),
     JR(Option<ControlFlowFlag>, ShortMemoryTarget),
+    DAA,
 }
 
 #[derive(Clone, PartialEq, EnumIter)]
@@ -476,7 +477,7 @@ impl Instruction {
                 MemoryTarget::Short(ShortMemoryTarget::H),
                 MemoryTarget::Short(ShortMemoryTarget::CONSTANT(next_byte)),
             )),
-            0x27 => None, // DAA
+            0x27 => Some(Instruction::DAA),
             0x28 => Some(Instruction::JR(
                 Some(ControlFlowFlag::Zero),
                 ShortMemoryTarget::CONSTANT(next_byte),
@@ -1019,6 +1020,9 @@ impl CPU {
                         as u16;
                 }
             }
+            Instruction::DAA => {
+                self.daa();
+            }
         }
     }
 
@@ -1296,6 +1300,35 @@ impl CPU {
             }
             _ => panic!("Can't LD short to long or long to short"),
         }
+    }
+
+    fn daa(&mut self) {
+        let mut a = self.registers.a;
+
+        // after an addition, adjust if (half-)carry occurred or if result is out of bounds
+        if !self.registers.f.subtract {
+            if self.registers.f.carry || a > 0x99 {
+                a = a.wrapping_add(0x60);
+                self.registers.f.carry = true;
+            }
+            if self.registers.f.half_carry || (a & 0x0f) > 0x09 {
+                a = a.wrapping_add(0x6);
+            }
+        }
+        // after a subtraction, only adjust if (half-)carry occurred
+        else {
+            if self.registers.f.carry {
+                a = a.wrapping_sub(0x60);
+            }
+            if self.registers.f.half_carry {
+                a = a.wrapping_sub(0x6);
+            }
+        }
+        self.registers.a = a;
+
+        // these flags are always updated
+        self.registers.f.zero = a == 0; // the usual zero flag
+        self.registers.f.half_carry = false; // half-carry flag is always cleared
     }
 }
 
@@ -2521,6 +2554,46 @@ mod cpu_tests {
     }
 
     #[test]
+    fn test_ld_bc_de() {
+        const VAL: u16 = 0x0123;
+
+        let mut cpu: CPU = Default::default();
+        cpu.registers.set_de(VAL);
+
+        cpu.execute(Instruction::LD(
+            MemoryTarget::Long(LongMemoryTarget::BC),
+            MemoryTarget::Long(LongMemoryTarget::DE),
+        ));
+
+        assert_eq!(cpu.registers.get_de(), VAL);
+        assert_flags_arent_changed(&cpu);
+
+        assert_eq!(cpu.registers.get_bc(), VAL);
+    }
+
+    #[test]
+    fn test_ld_bc_addr_hl() {
+        const VAL: u16 = 0xf00d;
+        const ADDR: u16 = 0x0123;
+
+        let mut cpu: CPU = Default::default();
+        cpu.bus.write_u16(ADDR, VAL);
+        cpu.registers.set_hl(ADDR);
+
+        cpu.execute(Instruction::LD(
+            MemoryTarget::Long(LongMemoryTarget::BC),
+            MemoryTarget::Long(LongMemoryTarget::ADDR_HL),
+        ));
+
+        // Shouldn't change
+        assert_eq!(cpu.bus.read_u16(ADDR), VAL);
+        assert_eq!(cpu.registers.get_hl(), ADDR);
+        assert_flags_arent_changed(&cpu);
+
+        assert_eq!(cpu.registers.get_bc(), VAL);
+    }
+
+    #[test]
     fn test_jp_no_condition() {
         const ADDR: u16 = 0x0123;
 
@@ -2594,5 +2667,55 @@ mod cpu_tests {
 
             diff += 1;
         }
+    }
+
+    #[test]
+    fn test_daa_add_b() {
+        const A: u8 = 0x45;
+        const B: u8 = 0x38;
+        const BCD_ADDITION: u8 = 0x83;
+
+        let mut cpu: CPU = Default::default();
+
+        cpu.registers.a = A;
+        cpu.registers.b = B;
+
+        cpu.execute(Instruction::ADD(ShortArithmeticTarget::B));
+        assert_eq!(cpu.registers.a, A.wrapping_add(B));
+
+        cpu.execute(Instruction::DAA);
+        assert_eq!(cpu.registers.a, BCD_ADDITION);
+
+        assert!(!cpu.registers.f.carry);
+        assert!(!cpu.registers.f.subtract);
+        assert!(!cpu.registers.f.zero);
+
+        // Should always get cleared
+        assert!(!cpu.registers.f.half_carry);
+    }
+
+    #[test]
+    fn test_daa_sub_c() {
+        const A: u8 = 0x83;
+        const C: u8 = 0x38;
+        const BCD_SUBTRACTION: u8 = 0x45;
+
+        let mut cpu: CPU = Default::default();
+
+        cpu.registers.a = A;
+        cpu.registers.c = C;
+
+        cpu.execute(Instruction::SUB(ShortArithmeticTarget::C));
+        assert_eq!(cpu.registers.a, A.wrapping_sub(C));
+
+        cpu.execute(Instruction::DAA);
+        assert_eq!(cpu.registers.a, BCD_SUBTRACTION);
+
+        assert!(!cpu.registers.f.carry);
+        assert!(cpu.registers.f.subtract);
+        assert!(!cpu.registers.f.zero);
+
+        // Should always get cleared
+        assert!(!cpu.registers.f.half_carry);
     }
 }
