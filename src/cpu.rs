@@ -198,14 +198,17 @@ enum ShortMemoryTarget {
     L,
     ADDR_HL,
     A,
+    ADDR_HLI, // Increase HL after read
+    ADDR_HLD, // Decrease HL after read
     ADDR_BC,
     ADDR_DE,
     ADDR_C, // This is the address 0xFF00 + C
     CONSTANT(u8),
+    ADDR_PLUS_CONSTANT(u8), // This is the address 0xFF00 + a8
     ADDR_CONSTANT(u16),
 }
 
-const ADDR_C_PREFIX: u16 = 0xFF00;
+const ADDR_PREFIX: u16 = 0xFF00;
 
 enum LongMemoryTarget {
     AF,
@@ -463,7 +466,10 @@ impl Instruction {
                 MemoryTarget::Long(LongMemoryTarget::HL),
                 MemoryTarget::Long(LongMemoryTarget::CONSTANT(next_2_bytes)),
             )),
-            0x22 => None, // LD (HL+), A
+            0x22 => Some(Instruction::LD(
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_HLI),
+                MemoryTarget::Short(ShortMemoryTarget::A),
+            )),
             0x23 => Some(Instruction::INC(ArithmeticTarget::Long(
                 LongArithmeticTarget::HL,
             ))),
@@ -483,7 +489,10 @@ impl Instruction {
                 ShortMemoryTarget::CONSTANT(next_byte),
             )),
             0x29 => Some(Instruction::ADDHL(LongArithmeticTarget::HL)),
-            0x2A => None, // LD A, (HL+)
+            0x2A => Some(Instruction::LD(
+                MemoryTarget::Short(ShortMemoryTarget::A),
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_HLI),
+            )),
             0x2B => Some(Instruction::DEC(ArithmeticTarget::Long(
                 LongArithmeticTarget::HL,
             ))),
@@ -506,7 +515,10 @@ impl Instruction {
                 MemoryTarget::Long(LongMemoryTarget::SP),
                 MemoryTarget::Long(LongMemoryTarget::CONSTANT(next_2_bytes)),
             )),
-            0x32 => None, // LD (HL-), A
+            0x32 => Some(Instruction::LD(
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_HLD),
+                MemoryTarget::Short(ShortMemoryTarget::A),
+            )),
             0x33 => Some(Instruction::INC(ArithmeticTarget::Long(
                 LongArithmeticTarget::SP,
             ))),
@@ -526,7 +538,10 @@ impl Instruction {
                 ShortMemoryTarget::CONSTANT(next_byte),
             )),
             0x39 => Some(Instruction::ADDHL(LongArithmeticTarget::SP)),
-            0x3A => None, // LD A, (HL-)
+            0x3A => Some(Instruction::LD(
+                MemoryTarget::Short(ShortMemoryTarget::A),
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_HLD),
+            )),
             0x3B => Some(Instruction::DEC(ArithmeticTarget::Long(
                 LongArithmeticTarget::SP,
             ))),
@@ -617,7 +632,10 @@ impl Instruction {
             0xDC => None, // CALL C, a16
             0xDE => Some(Instruction::SBC(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xDF => None, // RST 18H
-            0xE0 => None, // LDH (a8), A
+            0xE0 => Some(Instruction::LD(
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_PLUS_CONSTANT(next_byte)),
+                MemoryTarget::Short(ShortMemoryTarget::A),
+            )),
             0xE1 => Some(Instruction::POP(LongMemoryTarget::HL)),
             0xE2 => Some(Instruction::LD(
                 MemoryTarget::Short(ShortMemoryTarget::ADDR_C),
@@ -634,7 +652,10 @@ impl Instruction {
             )),
             0xEE => Some(Instruction::XOR(ShortArithmeticTarget::CONSTANT(next_byte))),
             0xEF => None, // RST 28H
-            0xF0 => None, // LDH A, (a8)
+            0xF0 => Some(Instruction::LD(
+                MemoryTarget::Short(ShortMemoryTarget::A),
+                MemoryTarget::Short(ShortMemoryTarget::ADDR_PLUS_CONSTANT(next_byte)),
+            )),
             0xF1 => Some(Instruction::POP(LongMemoryTarget::AF)),
             0xF2 => Some(Instruction::LD(
                 MemoryTarget::Short(ShortMemoryTarget::A),
@@ -750,13 +771,16 @@ impl CPU {
             ShortMemoryTarget::E => self.registers.e,
             ShortMemoryTarget::H => self.registers.h,
             ShortMemoryTarget::L => self.registers.l,
-            ShortMemoryTarget::ADDR_HL => self.bus.read_byte(self.registers.get_hl()),
+            ShortMemoryTarget::ADDR_HL
+            | ShortMemoryTarget::ADDR_HLI
+            | ShortMemoryTarget::ADDR_HLD => self.bus.read_byte(self.registers.get_hl()),
             ShortMemoryTarget::ADDR_BC => self.bus.read_byte(self.registers.get_bc()),
             ShortMemoryTarget::ADDR_DE => self.bus.read_byte(self.registers.get_de()),
-            ShortMemoryTarget::ADDR_C => {
-                self.bus.read_byte(ADDR_C_PREFIX + self.registers.c as u16)
-            }
+            ShortMemoryTarget::ADDR_C => self.bus.read_byte(ADDR_PREFIX + self.registers.c as u16),
             ShortMemoryTarget::CONSTANT(val) => *val,
+            ShortMemoryTarget::ADDR_PLUS_CONSTANT(val) => {
+                self.bus.read_byte(ADDR_PREFIX.wrapping_add(*val as u16))
+            }
             ShortMemoryTarget::ADDR_CONSTANT(addr) => self.bus.read_byte(*addr),
         }
     }
@@ -770,13 +794,18 @@ impl CPU {
             ShortMemoryTarget::E => self.registers.e = value,
             ShortMemoryTarget::H => self.registers.h = value,
             ShortMemoryTarget::L => self.registers.l = value,
-            ShortMemoryTarget::ADDR_HL => self.bus.write_byte(self.registers.get_hl(), value),
+            ShortMemoryTarget::ADDR_HL
+            | ShortMemoryTarget::ADDR_HLI
+            | ShortMemoryTarget::ADDR_HLD => self.bus.write_byte(self.registers.get_hl(), value),
             ShortMemoryTarget::ADDR_BC => self.bus.write_byte(self.registers.get_bc(), value),
             ShortMemoryTarget::ADDR_DE => self.bus.write_byte(self.registers.get_de(), value),
             ShortMemoryTarget::ADDR_C => self
                 .bus
-                .write_byte(ADDR_C_PREFIX + self.registers.c as u16, value),
+                .write_byte(ADDR_PREFIX + self.registers.c as u16, value),
             ShortMemoryTarget::CONSTANT(_) => panic!("Should never set value of constant"),
+            ShortMemoryTarget::ADDR_PLUS_CONSTANT(val) => self
+                .bus
+                .write_byte(ADDR_PREFIX.wrapping_add(*val as u16), value),
             ShortMemoryTarget::ADDR_CONSTANT(addr) => self.bus.write_byte(*addr, value),
         };
     }
@@ -1288,11 +1317,27 @@ impl CPU {
         value
     }
 
+    fn ld_hli_or_hld(&mut self, target: &ShortMemoryTarget) {
+        match target {
+            ShortMemoryTarget::ADDR_HLI => self
+                .registers
+                .set_hl(self.registers.get_hl().wrapping_add(1)),
+            ShortMemoryTarget::ADDR_HLD => self
+                .registers
+                .set_hl(self.registers.get_hl().wrapping_sub(1)),
+            _ => (),
+        }
+    }
+
     fn ld(&mut self, dest: MemoryTarget, src: MemoryTarget) {
         match (dest, src) {
             (MemoryTarget::Short(s_dest), MemoryTarget::Short(s_src)) => {
                 let value = self.get_short_memory_target_value(&s_src);
                 self.set_short_memory_target_value(&s_dest, value);
+
+                // Increase or decrease HL if we need to
+                self.ld_hli_or_hld(&s_src);
+                self.ld_hli_or_hld(&s_dest);
             }
             (MemoryTarget::Long(l_dest), MemoryTarget::Long(l_src)) => {
                 let value = self.get_long_memory_target_value(&l_src);
@@ -2551,6 +2596,72 @@ mod cpu_tests {
         assert_flags_arent_changed(&cpu);
 
         assert_eq!(cpu.bus.read_byte(ADDR2), VAL);
+    }
+
+    #[test]
+    fn test_ld_addr_hli_a() {
+        const VAL: u8 = 0xf0;
+        const ADDR: u16 = 0x0123;
+
+        let mut cpu: CPU = Default::default();
+        cpu.registers.a = VAL;
+        cpu.registers.set_hl(ADDR);
+        cpu.bus.write_byte(ADDR, !VAL);
+
+        cpu.execute(Instruction::LD(
+            MemoryTarget::Short(ShortMemoryTarget::ADDR_HLI),
+            MemoryTarget::Short(ShortMemoryTarget::A),
+        ));
+
+        // Shouldn't change
+        assert_flags_arent_changed(&cpu);
+
+        assert_eq!(cpu.registers.get_hl(), ADDR.wrapping_add(1));
+        assert_eq!(cpu.bus.read_byte(ADDR), VAL);
+    }
+
+    #[test]
+    fn test_ld_a_addr_hld() {
+        const VAL: u8 = 0xf0;
+        const ADDR: u16 = 0x0123;
+
+        let mut cpu: CPU = Default::default();
+        cpu.registers.a = !VAL;
+        cpu.registers.set_hl(ADDR);
+        cpu.bus.write_byte(ADDR, VAL);
+
+        cpu.execute(Instruction::LD(
+            MemoryTarget::Short(ShortMemoryTarget::A),
+            MemoryTarget::Short(ShortMemoryTarget::ADDR_HLD),
+        ));
+
+        // Shouldn't change
+        assert_flags_arent_changed(&cpu);
+        assert_eq!(cpu.bus.read_byte(ADDR), VAL);
+
+        assert_eq!(cpu.registers.get_hl(), ADDR.wrapping_sub(1));
+        assert_eq!(cpu.registers.a, VAL);
+    }
+
+    #[test]
+    fn test_ld_a_addr_plus_const() {
+        const VAL: u8 = 0xf0;
+        const ADD_TO_ADDR: u8 = 0x23;
+
+        let mut cpu: CPU = Default::default();
+        cpu.registers.a = !VAL;
+        cpu.bus.write_byte(ADDR_PREFIX + ADD_TO_ADDR as u16, VAL);
+
+        cpu.execute(Instruction::LD(
+            MemoryTarget::Short(ShortMemoryTarget::A),
+            MemoryTarget::Short(ShortMemoryTarget::ADDR_PLUS_CONSTANT(ADD_TO_ADDR)),
+        ));
+
+        // Shouldn't change
+        assert_flags_arent_changed(&cpu);
+        assert_eq!(cpu.bus.read_byte(ADDR_PREFIX + ADD_TO_ADDR as u16), VAL);
+
+        assert_eq!(cpu.registers.a, VAL);
     }
 
     #[test]
