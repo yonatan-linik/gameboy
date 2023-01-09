@@ -1,6 +1,7 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
+use crate::mem::MemoryBus;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -232,41 +233,6 @@ pub struct CPU {
     registers: Registers,
     pc: u16,
     bus: MemoryBus,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-struct MemoryBus {
-    memory: [u8; 0xFFFF],
-}
-
-impl Default for MemoryBus {
-    fn default() -> Self {
-        MemoryBus {
-            memory: [0; 0xFFFF],
-        }
-    }
-}
-
-impl MemoryBus {
-    fn read_byte(&self, address: u16) -> u8 {
-        self.memory[address as usize]
-    }
-
-    fn write_byte(&mut self, address: u16, value: u8) {
-        self.memory[address as usize] = value;
-    }
-
-    fn read_u16(&self, address: u16) -> u16 {
-        let first_byte: u16 = self.memory[address as usize].into();
-        let second_byte: u16 = self.memory[(address + 1) as usize].into();
-
-        (first_byte << 8) | second_byte
-    }
-
-    fn write_u16(&mut self, address: u16, value: u16) {
-        self.memory[address as usize] = (value >> 8) as u8;
-        self.memory[(address + 1) as usize] = (value & 0xFF) as u8;
-    }
 }
 
 impl CPU {}
@@ -2514,7 +2480,7 @@ mod cpu_tests {
     #[test]
     fn test_push_hl() {
         const VAL: u16 = 0x1234;
-        const ADDR: u16 = 0x0123;
+        const ADDR: u16 = 0xC123;
 
         let mut cpu: CPU = Default::default();
         cpu.registers.set_hl(VAL);
@@ -2534,7 +2500,7 @@ mod cpu_tests {
     #[test]
     fn test_pop_bc() {
         const VAL: u16 = 0x1234;
-        const ADDR: u16 = 0x0123;
+        const ADDR: u16 = 0xC123;
 
         let mut cpu: CPU = Default::default();
         cpu.bus.write_u16(ADDR, VAL);
@@ -2554,7 +2520,7 @@ mod cpu_tests {
     #[test]
     fn test_ld_c_addr_de() {
         const VAL: u8 = 0x34;
-        const ADDR: u16 = 0x0123;
+        const ADDR: u16 = 0xC123;
 
         let mut cpu: CPU = Default::default();
         cpu.bus.write_byte(ADDR, VAL);
@@ -2576,8 +2542,8 @@ mod cpu_tests {
     #[test]
     fn test_ld_addr_de_addr_bc() {
         const VAL: u8 = 0x3f;
-        const ADDR1: u16 = 0x0123;
-        const ADDR2: u16 = 0x7777;
+        const ADDR1: u16 = 0xC123;
+        const ADDR2: u16 = 0xD777;
 
         let mut cpu: CPU = Default::default();
         cpu.bus.write_byte(ADDR1, VAL);
@@ -2601,7 +2567,7 @@ mod cpu_tests {
     #[test]
     fn test_ld_addr_hli_a() {
         const VAL: u8 = 0xf0;
-        const ADDR: u16 = 0x0123;
+        const ADDR: u16 = 0xC123;
 
         let mut cpu: CPU = Default::default();
         cpu.registers.a = VAL;
@@ -2623,7 +2589,7 @@ mod cpu_tests {
     #[test]
     fn test_ld_a_addr_hld() {
         const VAL: u8 = 0xf0;
-        const ADDR: u16 = 0x0123;
+        const ADDR: u16 = 0xC123;
 
         let mut cpu: CPU = Default::default();
         cpu.registers.a = !VAL;
@@ -2646,7 +2612,7 @@ mod cpu_tests {
     #[test]
     fn test_ld_a_addr_plus_const() {
         const VAL: u8 = 0xf0;
-        const ADD_TO_ADDR: u8 = 0x23;
+        const ADD_TO_ADDR: u8 = 0x83;
 
         let mut cpu: CPU = Default::default();
         cpu.registers.a = !VAL;
@@ -2685,7 +2651,7 @@ mod cpu_tests {
     #[test]
     fn test_ld_bc_addr_hl() {
         const VAL: u16 = 0xf00d;
-        const ADDR: u16 = 0x0123;
+        const ADDR: u16 = 0xC123;
 
         let mut cpu: CPU = Default::default();
         cpu.bus.write_u16(ADDR, VAL);
@@ -2706,7 +2672,7 @@ mod cpu_tests {
 
     #[test]
     fn test_jp_no_condition() {
-        const ADDR: u16 = 0x0123;
+        const ADDR: u16 = 0xC123;
 
         let mut cpu: CPU = Default::default();
 
@@ -2739,7 +2705,7 @@ mod cpu_tests {
 
     #[test]
     fn test_jr_no_condition() {
-        const ADDR: u16 = 0x0123;
+        const ADDR: u16 = 0xC123;
         const DIFF: i8 = -89;
 
         let mut cpu = CPU {
@@ -2759,7 +2725,7 @@ mod cpu_tests {
 
     #[test]
     fn test_jr_with_condition() {
-        const ADDR: u16 = 0x0123;
+        const ADDR: u16 = 0xC123;
         let mut diff: i8 = -89;
 
         let mut cpu: CPU = Default::default();
