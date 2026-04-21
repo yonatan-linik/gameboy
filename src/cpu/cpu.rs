@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
-use crate::mem::MemoryBus;
+use crate::mem::Memory;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -126,13 +126,11 @@ enum MemoryTarget {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct CPU {
+pub struct CPU<M: Memory> {
     registers: Registers,
     pc: u16,
-    bus: MemoryBus,
+    bus: M,
 }
-
-impl CPU {}
 
 impl Instruction {
     fn from_byte(
@@ -553,7 +551,7 @@ impl Instruction {
     }
 }
 
-impl CPU {
+impl<M: Memory> CPU<M> {
     pub fn step(&mut self) {
         let mut instruction_byte = self.bus.read_byte(self.pc);
         let prefixed = instruction_byte == 0xCB;
@@ -564,14 +562,11 @@ impl CPU {
         let next_byte = self.bus.read_byte(end_of_instruction);
         let next_2_bytes = self.bus.read_u16(end_of_instruction);
 
-        let next_pc = if let Some(instruction) =
+        println!("Instruction is {instruction_byte:x}, next_2_bytes are: {next_2_bytes:x}");
+
+        let Some(instruction) =
             Instruction::from_byte(instruction_byte, prefixed, next_byte, next_2_bytes)
-        {
-            println!("Instruction is {instruction:?}");
-            let extra_bytes = instruction.extra_bytes();
-            self.execute(instruction);
-            end_of_instruction + extra_bytes
-        } else {
+        else {
             let description = format!(
                 "0x{}{:x}",
                 if prefixed { "cb" } else { "" },
@@ -579,8 +574,13 @@ impl CPU {
             );
             panic!("Unkown instruction found for: {description}")
         };
+        println!("Instruction is {instruction:?}");
+        let extra_bytes = instruction.extra_bytes();
+        let jumped = self.execute(instruction);
 
-        self.pc = next_pc;
+        if !jumped {
+            self.pc = end_of_instruction + extra_bytes;
+        }
     }
 
     // Test helper methods
@@ -589,7 +589,7 @@ impl CPU {
         CPU {
             registers: Registers::default(),
             pc: 0,
-            bus: crate::mem::MemoryBus::default(),
+            bus: M::default(),
         }
     }
 
@@ -772,7 +772,8 @@ impl CPU {
         }
     }
 
-    fn execute(&mut self, instruction: Instruction) {
+    /// Returns true if jumped and false otherwise
+    fn execute(&mut self, instruction: Instruction) -> bool {
         match instruction {
             Instruction::ADD(target) => {
                 let value = self.get_short_arithmetic_target_value(&target);
@@ -938,9 +939,11 @@ impl CPU {
                 if let Some(flag) = flag_option {
                     if self.get_control_flow_flag_value(&flag) {
                         self.pc = self.get_long_memory_target_value(&target);
+                        return true;
                     }
                 } else {
                     self.pc = self.get_long_memory_target_value(&target);
+                    return true;
                 }
             }
             Instruction::JR(flag_option, target) => {
@@ -949,17 +952,21 @@ impl CPU {
                         self.pc = (self.pc as i16)
                             .wrapping_add(self.get_short_memory_target_value(&target) as i8 as i16)
                             as u16;
+                        return true;
                     }
                 } else {
                     self.pc = (self.pc as i16)
                         .wrapping_add(self.get_short_memory_target_value(&target) as i8 as i16)
                         as u16;
+                    return true;
                 }
             }
             Instruction::DAA => {
                 self.daa();
             }
         }
+
+        false
     }
 
     fn add(&mut self, value: u8) -> u8 {
@@ -1081,7 +1088,7 @@ impl CPU {
     fn addhl(&mut self, value: u16) -> u16 {
         let (result, did_overflow) = self.registers.get_hl().overflowing_add(value);
 
-        self.registers.f.zero = result == 0;
+        // Zero flag isn't affected by addhl
         self.registers.f.subtract = false;
         self.registers.f.carry = did_overflow;
         self.registers.f.half_carry = (self.registers.get_hl() & 0xFFF) + (value & 0xFFF) > 0xFFF;
@@ -1295,8 +1302,11 @@ impl CPU {
 #[cfg(test)]
 mod cpu_tests {
     use super::*;
+    use crate::mem::MemoryBus;
 
-    fn assert_flags_arent_changed(cpu: &CPU) {
+    type TCPU = CPU<MemoryBus>;
+
+    fn assert_flags_arent_changed(cpu: &TCPU) {
         assert!(!cpu.registers.f.zero);
         assert!(!cpu.registers.f.carry);
         assert!(!cpu.registers.f.subtract);
@@ -1305,7 +1315,7 @@ mod cpu_tests {
 
     #[test]
     fn test_add_c() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.c = 7;
         cpu.registers.a = 6;
         cpu.execute(Instruction::ADD(ShortArithmeticTarget::C));
@@ -1318,7 +1328,7 @@ mod cpu_tests {
 
     #[test]
     fn test_add_c_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.c = 7;
         cpu.registers.a = u8::MAX;
         cpu.execute(Instruction::ADD(ShortArithmeticTarget::C));
@@ -1333,7 +1343,7 @@ mod cpu_tests {
 
     #[test]
     fn test_add_c_half_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.c = 2;
         cpu.registers.a = 15;
         cpu.execute(Instruction::ADD(ShortArithmeticTarget::C));
@@ -1348,7 +1358,7 @@ mod cpu_tests {
 
     #[test]
     fn test_adc_b() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.b = 7;
         cpu.registers.a = 6;
@@ -1362,7 +1372,7 @@ mod cpu_tests {
 
     #[test]
     fn test_adc_b_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.b = 7;
         cpu.registers.a = u8::MAX;
@@ -1378,7 +1388,7 @@ mod cpu_tests {
 
     #[test]
     fn test_adc_b_double_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.b = u8::MAX;
         cpu.registers.a = u8::MAX;
@@ -1397,7 +1407,7 @@ mod cpu_tests {
 
     #[test]
     fn test_adc_b_half_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.b = 2;
         cpu.registers.a = 15;
@@ -1413,7 +1423,7 @@ mod cpu_tests {
 
     #[test]
     fn test_sub_d() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.d = 6;
         cpu.registers.a = 7;
         cpu.execute(Instruction::SUB(ShortArithmeticTarget::D));
@@ -1428,7 +1438,7 @@ mod cpu_tests {
 
     #[test]
     fn test_sub_d_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.d = u8::MAX;
         cpu.registers.a = 7;
         cpu.execute(Instruction::SUB(ShortArithmeticTarget::D));
@@ -1443,7 +1453,7 @@ mod cpu_tests {
 
     #[test]
     fn test_sub_d_half_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.d = 15;
         cpu.registers.a = 1;
         cpu.execute(Instruction::SUB(ShortArithmeticTarget::D));
@@ -1460,7 +1470,7 @@ mod cpu_tests {
 
     #[test]
     fn test_sbc_e() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.e = 6;
         cpu.registers.a = 7;
@@ -1476,7 +1486,7 @@ mod cpu_tests {
 
     #[test]
     fn test_sbc_e_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.e = 7;
         cpu.registers.a = 7;
@@ -1492,7 +1502,7 @@ mod cpu_tests {
 
     #[test]
     fn test_sbc_e_another_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.e = u8::MAX;
         cpu.registers.a = 0;
@@ -1514,7 +1524,7 @@ mod cpu_tests {
 
     #[test]
     fn test_sbc_e_half_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.e = 15;
         cpu.registers.a = 2;
@@ -1532,7 +1542,7 @@ mod cpu_tests {
 
     #[test]
     fn test_and_h_non_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.h = 0xf0;
         cpu.registers.a = 0x1f;
         cpu.execute(Instruction::AND(ShortArithmeticTarget::H));
@@ -1550,7 +1560,7 @@ mod cpu_tests {
 
     #[test]
     fn test_and_h_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.h = 0xf0;
         cpu.registers.a = 0x0f;
         cpu.execute(Instruction::AND(ShortArithmeticTarget::H));
@@ -1568,7 +1578,7 @@ mod cpu_tests {
 
     #[test]
     fn test_or_l_non_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.l = 0xf0;
         cpu.registers.a = 0x0f;
         cpu.execute(Instruction::OR(ShortArithmeticTarget::L));
@@ -1581,7 +1591,7 @@ mod cpu_tests {
 
     #[test]
     fn test_or_l_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.l = 0x0;
         cpu.registers.a = 0x0;
         cpu.execute(Instruction::OR(ShortArithmeticTarget::L));
@@ -1597,7 +1607,7 @@ mod cpu_tests {
 
     #[test]
     fn test_xor_a() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.a = 0x1f; // Shouldn't matter what value we have here
         cpu.execute(Instruction::XOR(ShortArithmeticTarget::A));
 
@@ -1611,7 +1621,7 @@ mod cpu_tests {
 
     #[test]
     fn test_xor_b_non_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.b = 0xf0;
         cpu.registers.a = 0x0f;
         cpu.execute(Instruction::XOR(ShortArithmeticTarget::B));
@@ -1624,7 +1634,7 @@ mod cpu_tests {
 
     #[test]
     fn test_xor_b_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.b = 0xf0;
         cpu.registers.a = 0xf0;
         cpu.execute(Instruction::XOR(ShortArithmeticTarget::B));
@@ -1640,7 +1650,7 @@ mod cpu_tests {
 
     #[test]
     fn test_cp_c_eq() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.c = 0xf2;
         cpu.registers.a = 0xf2;
         cpu.execute(Instruction::CP(ShortArithmeticTarget::C));
@@ -1656,7 +1666,7 @@ mod cpu_tests {
 
     #[test]
     fn test_cp_c_larger() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.c = 0xf3;
         cpu.registers.a = 0xf2;
         cpu.execute(Instruction::CP(ShortArithmeticTarget::C));
@@ -1672,7 +1682,7 @@ mod cpu_tests {
 
     #[test]
     fn test_cp_c_smaller() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.c = 0xf2;
         cpu.registers.a = 0xf3;
         cpu.execute(Instruction::CP(ShortArithmeticTarget::C));
@@ -1688,7 +1698,7 @@ mod cpu_tests {
 
     #[test]
     fn test_inc_d() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.d = 7;
         cpu.execute(Instruction::INC(ArithmeticTarget::Short(
             ShortArithmeticTarget::D,
@@ -1701,7 +1711,7 @@ mod cpu_tests {
 
     #[test]
     fn test_inc_d_half_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.d = 15;
         cpu.execute(Instruction::INC(ArithmeticTarget::Short(
             ShortArithmeticTarget::D,
@@ -1717,7 +1727,7 @@ mod cpu_tests {
 
     #[test]
     fn test_inc_d_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.d = u8::MAX;
         cpu.execute(Instruction::INC(ArithmeticTarget::Short(
             ShortArithmeticTarget::D,
@@ -1734,7 +1744,7 @@ mod cpu_tests {
 
     #[test]
     fn test_dec_e() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.e = 7;
         cpu.execute(Instruction::DEC(ArithmeticTarget::Short(
             ShortArithmeticTarget::E,
@@ -1750,7 +1760,7 @@ mod cpu_tests {
 
     #[test]
     fn test_dec_e_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.e = 1;
         cpu.execute(Instruction::DEC(ArithmeticTarget::Short(
             ShortArithmeticTarget::E,
@@ -1766,7 +1776,7 @@ mod cpu_tests {
 
     #[test]
     fn test_dec_e_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.e = 0;
         cpu.execute(Instruction::DEC(ArithmeticTarget::Short(
             ShortArithmeticTarget::E,
@@ -1783,7 +1793,7 @@ mod cpu_tests {
 
     #[test]
     fn test_addhl_bc() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.set_bc(8942);
         cpu.registers.set_hl(10000);
         cpu.execute(Instruction::ADDHL(LongArithmeticTarget::BC));
@@ -1796,7 +1806,7 @@ mod cpu_tests {
 
     #[test]
     fn test_addhl_bc_half_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.set_bc(0xF00);
         cpu.registers.set_hl(0xF00);
         cpu.execute(Instruction::ADDHL(LongArithmeticTarget::BC));
@@ -1812,7 +1822,7 @@ mod cpu_tests {
 
     #[test]
     fn test_addhl_bc_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.set_bc(1);
         cpu.registers.set_hl(u16::MAX);
         cpu.execute(Instruction::ADDHL(LongArithmeticTarget::BC));
@@ -1822,13 +1832,14 @@ mod cpu_tests {
 
         assert!(cpu.registers.f.carry);
         assert!(!cpu.registers.f.subtract);
-        assert!(cpu.registers.f.zero);
+        // Zero flag remains unchanged
+        assert!(!cpu.registers.f.zero);
         assert!(cpu.registers.f.half_carry);
     }
 
     #[test]
     fn test_inc_de() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.set_de(7);
         cpu.execute(Instruction::INC(ArithmeticTarget::Long(
             LongArithmeticTarget::DE,
@@ -1842,7 +1853,7 @@ mod cpu_tests {
 
     #[test]
     fn test_inc_de_half_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.set_de(0xFFF);
         cpu.execute(Instruction::INC(ArithmeticTarget::Long(
             LongArithmeticTarget::DE,
@@ -1856,7 +1867,7 @@ mod cpu_tests {
 
     #[test]
     fn test_inc_de_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.set_de(u16::MAX);
         cpu.execute(Instruction::INC(ArithmeticTarget::Long(
             LongArithmeticTarget::DE,
@@ -1870,7 +1881,7 @@ mod cpu_tests {
 
     #[test]
     fn test_dec_hl() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.set_hl(7);
         cpu.execute(Instruction::DEC(ArithmeticTarget::Long(
             LongArithmeticTarget::HL,
@@ -1884,7 +1895,7 @@ mod cpu_tests {
 
     #[test]
     fn test_dec_hl_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.set_hl(0);
         cpu.execute(Instruction::DEC(ArithmeticTarget::Long(
             LongArithmeticTarget::HL,
@@ -1898,7 +1909,7 @@ mod cpu_tests {
 
     #[test]
     fn test_dec_hl_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.set_hl(1);
         cpu.execute(Instruction::DEC(ArithmeticTarget::Long(
             LongArithmeticTarget::HL,
@@ -1912,7 +1923,7 @@ mod cpu_tests {
 
     #[test]
     fn test_swap_a() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.a = 0x73;
         cpu.execute(Instruction::SWAP(ShortArithmeticTarget::A));
 
@@ -1924,7 +1935,7 @@ mod cpu_tests {
 
     #[test]
     fn test_swap_a_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.a = 0x0;
         cpu.execute(Instruction::SWAP(ShortArithmeticTarget::A));
 
@@ -1939,7 +1950,7 @@ mod cpu_tests {
 
     #[test]
     fn test_ccf() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.f.zero = true;
         cpu.execute(Instruction::CCF);
@@ -1955,7 +1966,7 @@ mod cpu_tests {
 
     #[test]
     fn test_scf() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.f.zero = true;
         cpu.execute(Instruction::SCF);
@@ -1971,7 +1982,7 @@ mod cpu_tests {
 
     #[test]
     fn test_nop() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.f.zero = true;
         cpu.registers.f.half_carry = true;
@@ -1987,7 +1998,7 @@ mod cpu_tests {
 
     #[test]
     fn test_cpl() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.a = 0b10101110;
 
         cpu.execute(Instruction::CPL);
@@ -2003,7 +2014,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rra() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.a = 0b10101110;
 
@@ -2017,7 +2028,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rra_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.a = 0b00000001;
 
@@ -2034,7 +2045,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rrca() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.a = 0b10101110;
 
@@ -2048,7 +2059,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rrca_change_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.a = 0b00000001;
 
@@ -2065,7 +2076,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rla() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.a = 0b01110101;
 
@@ -2079,7 +2090,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rla_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.a = 0b10000000;
 
@@ -2096,7 +2107,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rlca() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.a = 0b01110101;
 
@@ -2110,7 +2121,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rlca_change_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.a = 0b10000000;
 
@@ -2127,7 +2138,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rr_a() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.a = 0b10101110;
 
@@ -2140,7 +2151,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rr_a_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.a = 0b00000001;
 
@@ -2156,7 +2167,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rrc_b() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.b = 0b10101110;
 
@@ -2169,7 +2180,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rrc_b_change_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.b = 0b00000001;
 
@@ -2185,7 +2196,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rrc_b_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.b = 0b00000000;
 
@@ -2201,7 +2212,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rl_c() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.c = 0b01110101;
 
@@ -2214,7 +2225,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rl_c_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.c = 0b10000000;
 
@@ -2230,7 +2241,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rlc_d() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.d = 0b01110101;
 
@@ -2243,7 +2254,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rlc_d_change_carry() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.d = 0b10000000;
 
@@ -2259,7 +2270,7 @@ mod cpu_tests {
 
     #[test]
     fn test_rlc_d_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.d = 0b00000000;
 
@@ -2275,7 +2286,7 @@ mod cpu_tests {
 
     #[test]
     fn test_sla_e() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.e = 0b11110101;
 
@@ -2291,7 +2302,7 @@ mod cpu_tests {
 
     #[test]
     fn test_sla_e_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.e = 0b00000000;
 
@@ -2307,7 +2318,7 @@ mod cpu_tests {
 
     #[test]
     fn test_sra_h() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.h = 0b10000001;
 
@@ -2323,7 +2334,7 @@ mod cpu_tests {
 
     #[test]
     fn test_sra_h_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.h = 0b00000000;
 
@@ -2339,7 +2350,7 @@ mod cpu_tests {
 
     #[test]
     fn test_srl_l() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = false;
         cpu.registers.l = 0b10101111;
 
@@ -2355,7 +2366,7 @@ mod cpu_tests {
 
     #[test]
     fn test_srl_l_zero() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.f.carry = true;
         cpu.registers.l = 0b00000000;
 
@@ -2371,7 +2382,7 @@ mod cpu_tests {
 
     #[test]
     fn test_bit_a() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.a = 0b10101010;
 
         for bit in 0_u8..=7 {
@@ -2394,7 +2405,7 @@ mod cpu_tests {
 
     #[test]
     fn test_set_b() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         let mut val = 0b10101010;
         cpu.registers.b = val;
 
@@ -2411,7 +2422,7 @@ mod cpu_tests {
 
     #[test]
     fn test_reset_c() {
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         let mut val = 0b10101010;
         cpu.registers.c = val;
 
@@ -2431,7 +2442,7 @@ mod cpu_tests {
         const VAL: u16 = 0x1234;
         const ADDR: u16 = 0xC123;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.set_hl(VAL);
         cpu.registers.set_sp(ADDR);
 
@@ -2451,7 +2462,7 @@ mod cpu_tests {
         const VAL: u16 = 0x1234;
         const ADDR: u16 = 0xC123;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.bus.write_u16(ADDR, VAL);
         cpu.registers.set_sp(ADDR);
 
@@ -2471,7 +2482,7 @@ mod cpu_tests {
         const VAL: u8 = 0x34;
         const ADDR: u16 = 0xC123;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.bus.write_byte(ADDR, VAL);
         cpu.registers.set_de(ADDR);
 
@@ -2494,7 +2505,7 @@ mod cpu_tests {
         const ADDR1: u16 = 0xC123;
         const ADDR2: u16 = 0xD777;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.bus.write_byte(ADDR1, VAL);
         cpu.registers.set_bc(ADDR1);
         cpu.registers.set_de(ADDR2);
@@ -2518,7 +2529,7 @@ mod cpu_tests {
         const VAL: u8 = 0xf0;
         const ADDR: u16 = 0xC123;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.a = VAL;
         cpu.registers.set_hl(ADDR);
         cpu.bus.write_byte(ADDR, !VAL);
@@ -2540,7 +2551,7 @@ mod cpu_tests {
         const VAL: u8 = 0xf0;
         const ADDR: u16 = 0xC123;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.a = !VAL;
         cpu.registers.set_hl(ADDR);
         cpu.bus.write_byte(ADDR, VAL);
@@ -2563,7 +2574,7 @@ mod cpu_tests {
         const VAL: u8 = 0xf0;
         const ADD_TO_ADDR: u8 = 0x83;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.a = !VAL;
         cpu.bus.write_byte(ADDR_PREFIX + ADD_TO_ADDR as u16, VAL);
 
@@ -2583,7 +2594,7 @@ mod cpu_tests {
     fn test_ld_bc_de() {
         const VAL: u16 = 0x0123;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.registers.set_de(VAL);
 
         cpu.execute(Instruction::LD(
@@ -2602,7 +2613,7 @@ mod cpu_tests {
         const VAL: u16 = 0xf00d;
         const ADDR: u16 = 0xC123;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
         cpu.bus.write_u16(ADDR, VAL);
         cpu.registers.set_hl(ADDR);
 
@@ -2623,7 +2634,7 @@ mod cpu_tests {
     fn test_jp_no_condition() {
         const ADDR: u16 = 0xC123;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
 
         cpu.execute(Instruction::JP(None, LongMemoryTarget::CONSTANT(ADDR)));
 
@@ -2636,7 +2647,7 @@ mod cpu_tests {
     fn test_jp_with_condition() {
         let mut addr: u16 = 0x0123;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
 
         for flag in ControlFlowFlag::iter() {
             cpu.set_control_flow_flag_value(&flag);
@@ -2657,7 +2668,7 @@ mod cpu_tests {
         const ADDR: u16 = 0xC123;
         const DIFF: i8 = -89;
 
-        let mut cpu = CPU {
+        let mut cpu = TCPU {
             pc: ADDR,
             ..Default::default()
         };
@@ -2677,7 +2688,7 @@ mod cpu_tests {
         const ADDR: u16 = 0xC123;
         let mut diff: i8 = -89;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
 
         for flag in ControlFlowFlag::iter() {
             cpu.pc = ADDR;
@@ -2701,7 +2712,7 @@ mod cpu_tests {
         const B: u8 = 0x38;
         const BCD_ADDITION: u8 = 0x83;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
 
         cpu.registers.a = A;
         cpu.registers.b = B;
@@ -2726,7 +2737,7 @@ mod cpu_tests {
         const C: u8 = 0x38;
         const BCD_SUBTRACTION: u8 = 0x45;
 
-        let mut cpu: CPU = Default::default();
+        let mut cpu: TCPU = Default::default();
 
         cpu.registers.a = A;
         cpu.registers.c = C;

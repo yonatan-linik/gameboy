@@ -1,4 +1,4 @@
-pub mod cpu;
+mod cpu;
 mod register;
 
 #[cfg(test)]

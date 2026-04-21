@@ -24,6 +24,7 @@
 
 use crate::cpu::cpu::CPU;
 use crate::cpu::register::{FlagsRegister, Registers};
+use crate::mem::MemoryFlat;
 use serde::{Deserialize, Serialize};
 use std::fs;
 
@@ -85,7 +86,7 @@ impl CpuState {
     }
 
     /// Apply this state to a CPU instance, setting all registers and memory
-    fn apply_to_cpu(&self, cpu: &mut CPU) {
+    fn apply_to_cpu(&self, cpu: &mut CPU<MemoryFlat>) {
         let registers = self.to_registers();
         cpu.set_registers(registers);
         // In decode-execute-prefetch architecture, PC points to the next instruction
@@ -103,7 +104,7 @@ impl CpuState {
     ///
     /// Returns true if all registers and memory locations match.
     /// Prints detailed error messages for any mismatches.
-    fn matches_cpu(&self, cpu: &CPU) -> bool {
+    fn matches_cpu(&self, cpu: &CPU<MemoryFlat>) -> bool {
         let registers = cpu.get_registers();
         let pc = cpu.get_pc();
 
@@ -274,6 +275,9 @@ fn run_json(file_name: &str) {
     let mut first_failures = Vec::new();
 
     for (i, test) in tests.iter().enumerate() {
+        // if test.name != "09 07 ff" {
+        //     continue;
+        // }
         let debug = failed == 0 && i == 0; // Debug first test only
         if run_test_with_debug(test.clone(), debug) {
             passed += 1;
@@ -401,5 +405,1502 @@ mod tests {
     #[test]
     fn test_08_json() {
         run_json("src/cpu/tests/cases/08.json");
+    }
+
+    /// Opcode 0x09
+    #[test]
+    fn test_09_json() {
+        run_json("src/cpu/tests/cases/09.json");
+    }
+
+    /// Opcode 0x0a
+    #[test]
+    fn test_0a_json() {
+        run_json("src/cpu/tests/cases/0a.json");
+    }
+
+    /// Opcode 0x0b
+    #[test]
+    fn test_0b_json() {
+        run_json("src/cpu/tests/cases/0b.json");
+    }
+
+    /// Opcode 0x0c
+    #[test]
+    fn test_0c_json() {
+        run_json("src/cpu/tests/cases/0c.json");
+    }
+
+    /// Opcode 0x0d
+    #[test]
+    fn test_0d_json() {
+        run_json("src/cpu/tests/cases/0d.json");
+    }
+
+    /// Opcode 0x0e
+    #[test]
+    fn test_0e_json() {
+        run_json("src/cpu/tests/cases/0e.json");
+    }
+
+    /// Opcode 0x0f
+    #[test]
+    fn test_0f_json() {
+        run_json("src/cpu/tests/cases/0f.json");
+    }
+
+    /// Opcode 0x10
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_10_json() {
+        run_json("src/cpu/tests/cases/10.json");
+    }
+
+    /// Opcode 0x11
+    #[test]
+    fn test_11_json() {
+        run_json("src/cpu/tests/cases/11.json");
+    }
+
+    /// Opcode 0x12
+    #[test]
+    fn test_12_json() {
+        run_json("src/cpu/tests/cases/12.json");
+    }
+
+    /// Opcode 0x13
+    #[test]
+    fn test_13_json() {
+        run_json("src/cpu/tests/cases/13.json");
+    }
+
+    /// Opcode 0x14
+    #[test]
+    fn test_14_json() {
+        run_json("src/cpu/tests/cases/14.json");
+    }
+
+    /// Opcode 0x15
+    #[test]
+    fn test_15_json() {
+        run_json("src/cpu/tests/cases/15.json");
+    }
+
+    /// Opcode 0x16
+    #[test]
+    fn test_16_json() {
+        run_json("src/cpu/tests/cases/16.json");
+    }
+
+    /// Opcode 0x17
+    #[test]
+    fn test_17_json() {
+        run_json("src/cpu/tests/cases/17.json");
+    }
+
+    /// Opcode 0x18
+    #[test]
+    fn test_18_json() {
+        run_json("src/cpu/tests/cases/18.json");
+    }
+
+    /// Opcode 0x19
+    #[test]
+    fn test_19_json() {
+        run_json("src/cpu/tests/cases/19.json");
+    }
+
+    /// Opcode 0x1a
+    #[test]
+    fn test_1a_json() {
+        run_json("src/cpu/tests/cases/1a.json");
+    }
+
+    /// Opcode 0x1b
+    #[test]
+    fn test_1b_json() {
+        run_json("src/cpu/tests/cases/1b.json");
+    }
+
+    /// Opcode 0x1c
+    #[test]
+    fn test_1c_json() {
+        run_json("src/cpu/tests/cases/1c.json");
+    }
+
+    /// Opcode 0x1d
+    #[test]
+    fn test_1d_json() {
+        run_json("src/cpu/tests/cases/1d.json");
+    }
+
+    /// Opcode 0x1e
+    #[test]
+    fn test_1e_json() {
+        run_json("src/cpu/tests/cases/1e.json");
+    }
+
+    /// Opcode 0x1f
+    #[test]
+    fn test_1f_json() {
+        run_json("src/cpu/tests/cases/1f.json");
+    }
+
+    /// Opcode 0x20
+    #[test]
+    fn test_20_json() {
+        run_json("src/cpu/tests/cases/20.json");
+    }
+
+    /// Opcode 0x21
+    #[test]
+    fn test_21_json() {
+        run_json("src/cpu/tests/cases/21.json");
+    }
+
+    /// Opcode 0x22
+    #[test]
+    fn test_22_json() {
+        run_json("src/cpu/tests/cases/22.json");
+    }
+
+    /// Opcode 0x23
+    #[test]
+    fn test_23_json() {
+        run_json("src/cpu/tests/cases/23.json");
+    }
+
+    /// Opcode 0x24
+    #[test]
+    fn test_24_json() {
+        run_json("src/cpu/tests/cases/24.json");
+    }
+
+    /// Opcode 0x25
+    #[test]
+    fn test_25_json() {
+        run_json("src/cpu/tests/cases/25.json");
+    }
+
+    /// Opcode 0x26
+    #[test]
+    fn test_26_json() {
+        run_json("src/cpu/tests/cases/26.json");
+    }
+
+    /// Opcode 0x27
+    #[test]
+    fn test_27_json() {
+        run_json("src/cpu/tests/cases/27.json");
+    }
+
+    /// Opcode 0x28
+    #[test]
+    fn test_28_json() {
+        run_json("src/cpu/tests/cases/28.json");
+    }
+
+    /// Opcode 0x29
+    #[test]
+    fn test_29_json() {
+        run_json("src/cpu/tests/cases/29.json");
+    }
+
+    /// Opcode 0x2a
+    #[test]
+    fn test_2a_json() {
+        run_json("src/cpu/tests/cases/2a.json");
+    }
+
+    /// Opcode 0x2b
+    #[test]
+    fn test_2b_json() {
+        run_json("src/cpu/tests/cases/2b.json");
+    }
+
+    /// Opcode 0x2c
+    #[test]
+    fn test_2c_json() {
+        run_json("src/cpu/tests/cases/2c.json");
+    }
+
+    /// Opcode 0x2d
+    #[test]
+    fn test_2d_json() {
+        run_json("src/cpu/tests/cases/2d.json");
+    }
+
+    /// Opcode 0x2e
+    #[test]
+    fn test_2e_json() {
+        run_json("src/cpu/tests/cases/2e.json");
+    }
+
+    /// Opcode 0x2f
+    #[test]
+    fn test_2f_json() {
+        run_json("src/cpu/tests/cases/2f.json");
+    }
+
+    /// Opcode 0x30
+    #[test]
+    fn test_30_json() {
+        run_json("src/cpu/tests/cases/30.json");
+    }
+
+    /// Opcode 0x31
+    #[test]
+    fn test_31_json() {
+        run_json("src/cpu/tests/cases/31.json");
+    }
+
+    /// Opcode 0x32
+    #[test]
+    fn test_32_json() {
+        run_json("src/cpu/tests/cases/32.json");
+    }
+
+    /// Opcode 0x33
+    #[test]
+    fn test_33_json() {
+        run_json("src/cpu/tests/cases/33.json");
+    }
+
+    /// Opcode 0x34
+    #[test]
+    fn test_34_json() {
+        run_json("src/cpu/tests/cases/34.json");
+    }
+
+    /// Opcode 0x35
+    #[test]
+    fn test_35_json() {
+        run_json("src/cpu/tests/cases/35.json");
+    }
+
+    /// Opcode 0x36
+    #[test]
+    fn test_36_json() {
+        run_json("src/cpu/tests/cases/36.json");
+    }
+
+    /// Opcode 0x37
+    #[test]
+    fn test_37_json() {
+        run_json("src/cpu/tests/cases/37.json");
+    }
+
+    /// Opcode 0x38
+    #[test]
+    fn test_38_json() {
+        run_json("src/cpu/tests/cases/38.json");
+    }
+
+    /// Opcode 0x39
+    #[test]
+    fn test_39_json() {
+        run_json("src/cpu/tests/cases/39.json");
+    }
+
+    /// Opcode 0x3a
+    #[test]
+    fn test_3a_json() {
+        run_json("src/cpu/tests/cases/3a.json");
+    }
+
+    /// Opcode 0x3b
+    #[test]
+    fn test_3b_json() {
+        run_json("src/cpu/tests/cases/3b.json");
+    }
+
+    /// Opcode 0x3c
+    #[test]
+    fn test_3c_json() {
+        run_json("src/cpu/tests/cases/3c.json");
+    }
+
+    /// Opcode 0x3d
+    #[test]
+    fn test_3d_json() {
+        run_json("src/cpu/tests/cases/3d.json");
+    }
+
+    /// Opcode 0x3e
+    #[test]
+    fn test_3e_json() {
+        run_json("src/cpu/tests/cases/3e.json");
+    }
+
+    /// Opcode 0x3f
+    #[test]
+    fn test_3f_json() {
+        run_json("src/cpu/tests/cases/3f.json");
+    }
+
+    /// Opcode 0x40
+    #[test]
+    fn test_40_json() {
+        run_json("src/cpu/tests/cases/40.json");
+    }
+
+    /// Opcode 0x41
+    #[test]
+    fn test_41_json() {
+        run_json("src/cpu/tests/cases/41.json");
+    }
+
+    /// Opcode 0x42
+    #[test]
+    fn test_42_json() {
+        run_json("src/cpu/tests/cases/42.json");
+    }
+
+    /// Opcode 0x43
+    #[test]
+    fn test_43_json() {
+        run_json("src/cpu/tests/cases/43.json");
+    }
+
+    /// Opcode 0x44
+    #[test]
+    fn test_44_json() {
+        run_json("src/cpu/tests/cases/44.json");
+    }
+
+    /// Opcode 0x45
+    #[test]
+    fn test_45_json() {
+        run_json("src/cpu/tests/cases/45.json");
+    }
+
+    /// Opcode 0x46
+    #[test]
+    fn test_46_json() {
+        run_json("src/cpu/tests/cases/46.json");
+    }
+
+    /// Opcode 0x47
+    #[test]
+    fn test_47_json() {
+        run_json("src/cpu/tests/cases/47.json");
+    }
+
+    /// Opcode 0x48
+    #[test]
+    fn test_48_json() {
+        run_json("src/cpu/tests/cases/48.json");
+    }
+
+    /// Opcode 0x49
+    #[test]
+    fn test_49_json() {
+        run_json("src/cpu/tests/cases/49.json");
+    }
+
+    /// Opcode 0x4a
+    #[test]
+    fn test_4a_json() {
+        run_json("src/cpu/tests/cases/4a.json");
+    }
+
+    /// Opcode 0x4b
+    #[test]
+    fn test_4b_json() {
+        run_json("src/cpu/tests/cases/4b.json");
+    }
+
+    /// Opcode 0x4c
+    #[test]
+    fn test_4c_json() {
+        run_json("src/cpu/tests/cases/4c.json");
+    }
+
+    /// Opcode 0x4d
+    #[test]
+    fn test_4d_json() {
+        run_json("src/cpu/tests/cases/4d.json");
+    }
+
+    /// Opcode 0x4e
+    #[test]
+    fn test_4e_json() {
+        run_json("src/cpu/tests/cases/4e.json");
+    }
+
+    /// Opcode 0x4f
+    #[test]
+    fn test_4f_json() {
+        run_json("src/cpu/tests/cases/4f.json");
+    }
+
+    /// Opcode 0x50
+    #[test]
+    fn test_50_json() {
+        run_json("src/cpu/tests/cases/50.json");
+    }
+
+    /// Opcode 0x51
+    #[test]
+    fn test_51_json() {
+        run_json("src/cpu/tests/cases/51.json");
+    }
+
+    /// Opcode 0x52
+    #[test]
+    fn test_52_json() {
+        run_json("src/cpu/tests/cases/52.json");
+    }
+
+    /// Opcode 0x53
+    #[test]
+    fn test_53_json() {
+        run_json("src/cpu/tests/cases/53.json");
+    }
+
+    /// Opcode 0x54
+    #[test]
+    fn test_54_json() {
+        run_json("src/cpu/tests/cases/54.json");
+    }
+
+    /// Opcode 0x55
+    #[test]
+    fn test_55_json() {
+        run_json("src/cpu/tests/cases/55.json");
+    }
+
+    /// Opcode 0x56
+    #[test]
+    fn test_56_json() {
+        run_json("src/cpu/tests/cases/56.json");
+    }
+
+    /// Opcode 0x57
+    #[test]
+    fn test_57_json() {
+        run_json("src/cpu/tests/cases/57.json");
+    }
+
+    /// Opcode 0x58
+    #[test]
+    fn test_58_json() {
+        run_json("src/cpu/tests/cases/58.json");
+    }
+
+    /// Opcode 0x59
+    #[test]
+    fn test_59_json() {
+        run_json("src/cpu/tests/cases/59.json");
+    }
+
+    /// Opcode 0x5a
+    #[test]
+    fn test_5a_json() {
+        run_json("src/cpu/tests/cases/5a.json");
+    }
+
+    /// Opcode 0x5b
+    #[test]
+    fn test_5b_json() {
+        run_json("src/cpu/tests/cases/5b.json");
+    }
+
+    /// Opcode 0x5c
+    #[test]
+    fn test_5c_json() {
+        run_json("src/cpu/tests/cases/5c.json");
+    }
+
+    /// Opcode 0x5d
+    #[test]
+    fn test_5d_json() {
+        run_json("src/cpu/tests/cases/5d.json");
+    }
+
+    /// Opcode 0x5e
+    #[test]
+    fn test_5e_json() {
+        run_json("src/cpu/tests/cases/5e.json");
+    }
+
+    /// Opcode 0x5f
+    #[test]
+    fn test_5f_json() {
+        run_json("src/cpu/tests/cases/5f.json");
+    }
+
+    /// Opcode 0x60
+    #[test]
+    fn test_60_json() {
+        run_json("src/cpu/tests/cases/60.json");
+    }
+
+    /// Opcode 0x61
+    #[test]
+    fn test_61_json() {
+        run_json("src/cpu/tests/cases/61.json");
+    }
+
+    /// Opcode 0x62
+    #[test]
+    fn test_62_json() {
+        run_json("src/cpu/tests/cases/62.json");
+    }
+
+    /// Opcode 0x63
+    #[test]
+    fn test_63_json() {
+        run_json("src/cpu/tests/cases/63.json");
+    }
+
+    /// Opcode 0x64
+    #[test]
+    fn test_64_json() {
+        run_json("src/cpu/tests/cases/64.json");
+    }
+
+    /// Opcode 0x65
+    #[test]
+    fn test_65_json() {
+        run_json("src/cpu/tests/cases/65.json");
+    }
+
+    /// Opcode 0x66
+    #[test]
+    fn test_66_json() {
+        run_json("src/cpu/tests/cases/66.json");
+    }
+
+    /// Opcode 0x67
+    #[test]
+    fn test_67_json() {
+        run_json("src/cpu/tests/cases/67.json");
+    }
+
+    /// Opcode 0x68
+    #[test]
+    fn test_68_json() {
+        run_json("src/cpu/tests/cases/68.json");
+    }
+
+    /// Opcode 0x69
+    #[test]
+    fn test_69_json() {
+        run_json("src/cpu/tests/cases/69.json");
+    }
+
+    /// Opcode 0x6a
+    #[test]
+    fn test_6a_json() {
+        run_json("src/cpu/tests/cases/6a.json");
+    }
+
+    /// Opcode 0x6b
+    #[test]
+    fn test_6b_json() {
+        run_json("src/cpu/tests/cases/6b.json");
+    }
+
+    /// Opcode 0x6c
+    #[test]
+    fn test_6c_json() {
+        run_json("src/cpu/tests/cases/6c.json");
+    }
+
+    /// Opcode 0x6d
+    #[test]
+    fn test_6d_json() {
+        run_json("src/cpu/tests/cases/6d.json");
+    }
+
+    /// Opcode 0x6e
+    #[test]
+    fn test_6e_json() {
+        run_json("src/cpu/tests/cases/6e.json");
+    }
+
+    /// Opcode 0x6f
+    #[test]
+    fn test_6f_json() {
+        run_json("src/cpu/tests/cases/6f.json");
+    }
+
+    /// Opcode 0x70
+    #[test]
+    fn test_70_json() {
+        run_json("src/cpu/tests/cases/70.json");
+    }
+
+    /// Opcode 0x71
+    #[test]
+    fn test_71_json() {
+        run_json("src/cpu/tests/cases/71.json");
+    }
+
+    /// Opcode 0x72
+    #[test]
+    fn test_72_json() {
+        run_json("src/cpu/tests/cases/72.json");
+    }
+
+    /// Opcode 0x73
+    #[test]
+    fn test_73_json() {
+        run_json("src/cpu/tests/cases/73.json");
+    }
+
+    /// Opcode 0x74
+    #[test]
+    fn test_74_json() {
+        run_json("src/cpu/tests/cases/74.json");
+    }
+
+    /// Opcode 0x75
+    #[test]
+    fn test_75_json() {
+        run_json("src/cpu/tests/cases/75.json");
+    }
+
+    /// Opcode 0x76
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_76_json() {
+        run_json("src/cpu/tests/cases/76.json");
+    }
+
+    /// Opcode 0x77
+    #[test]
+    fn test_77_json() {
+        run_json("src/cpu/tests/cases/77.json");
+    }
+
+    /// Opcode 0x78
+    #[test]
+    fn test_78_json() {
+        run_json("src/cpu/tests/cases/78.json");
+    }
+
+    /// Opcode 0x79
+    #[test]
+    fn test_79_json() {
+        run_json("src/cpu/tests/cases/79.json");
+    }
+
+    /// Opcode 0x7a
+    #[test]
+    fn test_7a_json() {
+        run_json("src/cpu/tests/cases/7a.json");
+    }
+
+    /// Opcode 0x7b
+    #[test]
+    fn test_7b_json() {
+        run_json("src/cpu/tests/cases/7b.json");
+    }
+
+    /// Opcode 0x7c
+    #[test]
+    fn test_7c_json() {
+        run_json("src/cpu/tests/cases/7c.json");
+    }
+
+    /// Opcode 0x7d
+    #[test]
+    fn test_7d_json() {
+        run_json("src/cpu/tests/cases/7d.json");
+    }
+
+    /// Opcode 0x7e
+    #[test]
+    fn test_7e_json() {
+        run_json("src/cpu/tests/cases/7e.json");
+    }
+
+    /// Opcode 0x7f
+    #[test]
+    fn test_7f_json() {
+        run_json("src/cpu/tests/cases/7f.json");
+    }
+
+    /// Opcode 0x80
+    #[test]
+    fn test_80_json() {
+        run_json("src/cpu/tests/cases/80.json");
+    }
+
+    /// Opcode 0x81
+    #[test]
+    fn test_81_json() {
+        run_json("src/cpu/tests/cases/81.json");
+    }
+
+    /// Opcode 0x82
+    #[test]
+    fn test_82_json() {
+        run_json("src/cpu/tests/cases/82.json");
+    }
+
+    /// Opcode 0x83
+    #[test]
+    fn test_83_json() {
+        run_json("src/cpu/tests/cases/83.json");
+    }
+
+    /// Opcode 0x84
+    #[test]
+    fn test_84_json() {
+        run_json("src/cpu/tests/cases/84.json");
+    }
+
+    /// Opcode 0x85
+    #[test]
+    fn test_85_json() {
+        run_json("src/cpu/tests/cases/85.json");
+    }
+
+    /// Opcode 0x86
+    #[test]
+    fn test_86_json() {
+        run_json("src/cpu/tests/cases/86.json");
+    }
+
+    /// Opcode 0x87
+    #[test]
+    fn test_87_json() {
+        run_json("src/cpu/tests/cases/87.json");
+    }
+
+    /// Opcode 0x88
+    #[test]
+    fn test_88_json() {
+        run_json("src/cpu/tests/cases/88.json");
+    }
+
+    /// Opcode 0x89
+    #[test]
+    fn test_89_json() {
+        run_json("src/cpu/tests/cases/89.json");
+    }
+
+    /// Opcode 0x8a
+    #[test]
+    fn test_8a_json() {
+        run_json("src/cpu/tests/cases/8a.json");
+    }
+
+    /// Opcode 0x8b
+    #[test]
+    fn test_8b_json() {
+        run_json("src/cpu/tests/cases/8b.json");
+    }
+
+    /// Opcode 0x8c
+    #[test]
+    fn test_8c_json() {
+        run_json("src/cpu/tests/cases/8c.json");
+    }
+
+    /// Opcode 0x8d
+    #[test]
+    fn test_8d_json() {
+        run_json("src/cpu/tests/cases/8d.json");
+    }
+
+    /// Opcode 0x8e
+    #[test]
+    fn test_8e_json() {
+        run_json("src/cpu/tests/cases/8e.json");
+    }
+
+    /// Opcode 0x8f
+    #[test]
+    fn test_8f_json() {
+        run_json("src/cpu/tests/cases/8f.json");
+    }
+
+    /// Opcode 0x90
+    #[test]
+    fn test_90_json() {
+        run_json("src/cpu/tests/cases/90.json");
+    }
+
+    /// Opcode 0x91
+    #[test]
+    fn test_91_json() {
+        run_json("src/cpu/tests/cases/91.json");
+    }
+
+    /// Opcode 0x92
+    #[test]
+    fn test_92_json() {
+        run_json("src/cpu/tests/cases/92.json");
+    }
+
+    /// Opcode 0x93
+    #[test]
+    fn test_93_json() {
+        run_json("src/cpu/tests/cases/93.json");
+    }
+
+    /// Opcode 0x94
+    #[test]
+    fn test_94_json() {
+        run_json("src/cpu/tests/cases/94.json");
+    }
+
+    /// Opcode 0x95
+    #[test]
+    fn test_95_json() {
+        run_json("src/cpu/tests/cases/95.json");
+    }
+
+    /// Opcode 0x96
+    #[test]
+    fn test_96_json() {
+        run_json("src/cpu/tests/cases/96.json");
+    }
+
+    /// Opcode 0x97
+    #[test]
+    fn test_97_json() {
+        run_json("src/cpu/tests/cases/97.json");
+    }
+
+    /// Opcode 0x98
+    #[test]
+    fn test_98_json() {
+        run_json("src/cpu/tests/cases/98.json");
+    }
+
+    /// Opcode 0x99
+    #[test]
+    fn test_99_json() {
+        run_json("src/cpu/tests/cases/99.json");
+    }
+
+    /// Opcode 0x9a
+    #[test]
+    fn test_9a_json() {
+        run_json("src/cpu/tests/cases/9a.json");
+    }
+
+    /// Opcode 0x9b
+    #[test]
+    fn test_9b_json() {
+        run_json("src/cpu/tests/cases/9b.json");
+    }
+
+    /// Opcode 0x9c
+    #[test]
+    fn test_9c_json() {
+        run_json("src/cpu/tests/cases/9c.json");
+    }
+
+    /// Opcode 0x9d
+    #[test]
+    fn test_9d_json() {
+        run_json("src/cpu/tests/cases/9d.json");
+    }
+
+    /// Opcode 0x9e
+    #[test]
+    fn test_9e_json() {
+        run_json("src/cpu/tests/cases/9e.json");
+    }
+
+    /// Opcode 0x9f
+    #[test]
+    fn test_9f_json() {
+        run_json("src/cpu/tests/cases/9f.json");
+    }
+
+    /// Opcode 0xa0
+    #[test]
+    fn test_a0_json() {
+        run_json("src/cpu/tests/cases/a0.json");
+    }
+
+    /// Opcode 0xa1
+    #[test]
+    fn test_a1_json() {
+        run_json("src/cpu/tests/cases/a1.json");
+    }
+
+    /// Opcode 0xa2
+    #[test]
+    fn test_a2_json() {
+        run_json("src/cpu/tests/cases/a2.json");
+    }
+
+    /// Opcode 0xa3
+    #[test]
+    fn test_a3_json() {
+        run_json("src/cpu/tests/cases/a3.json");
+    }
+
+    /// Opcode 0xa4
+    #[test]
+    fn test_a4_json() {
+        run_json("src/cpu/tests/cases/a4.json");
+    }
+
+    /// Opcode 0xa5
+    #[test]
+    fn test_a5_json() {
+        run_json("src/cpu/tests/cases/a5.json");
+    }
+
+    /// Opcode 0xa6
+    #[test]
+    fn test_a6_json() {
+        run_json("src/cpu/tests/cases/a6.json");
+    }
+
+    /// Opcode 0xa7
+    #[test]
+    fn test_a7_json() {
+        run_json("src/cpu/tests/cases/a7.json");
+    }
+
+    /// Opcode 0xa8
+    #[test]
+    fn test_a8_json() {
+        run_json("src/cpu/tests/cases/a8.json");
+    }
+
+    /// Opcode 0xa9
+    #[test]
+    fn test_a9_json() {
+        run_json("src/cpu/tests/cases/a9.json");
+    }
+
+    /// Opcode 0xaa
+    #[test]
+    fn test_aa_json() {
+        run_json("src/cpu/tests/cases/aa.json");
+    }
+
+    /// Opcode 0xab
+    #[test]
+    fn test_ab_json() {
+        run_json("src/cpu/tests/cases/ab.json");
+    }
+
+    /// Opcode 0xac
+    #[test]
+    fn test_ac_json() {
+        run_json("src/cpu/tests/cases/ac.json");
+    }
+
+    /// Opcode 0xad
+    #[test]
+    fn test_ad_json() {
+        run_json("src/cpu/tests/cases/ad.json");
+    }
+
+    /// Opcode 0xae
+    #[test]
+    fn test_ae_json() {
+        run_json("src/cpu/tests/cases/ae.json");
+    }
+
+    /// Opcode 0xaf
+    #[test]
+    fn test_af_json() {
+        run_json("src/cpu/tests/cases/af.json");
+    }
+
+    /// Opcode 0xb0
+    #[test]
+    fn test_b0_json() {
+        run_json("src/cpu/tests/cases/b0.json");
+    }
+
+    /// Opcode 0xb1
+    #[test]
+    fn test_b1_json() {
+        run_json("src/cpu/tests/cases/b1.json");
+    }
+
+    /// Opcode 0xb2
+    #[test]
+    fn test_b2_json() {
+        run_json("src/cpu/tests/cases/b2.json");
+    }
+
+    /// Opcode 0xb3
+    #[test]
+    fn test_b3_json() {
+        run_json("src/cpu/tests/cases/b3.json");
+    }
+
+    /// Opcode 0xb4
+    #[test]
+    fn test_b4_json() {
+        run_json("src/cpu/tests/cases/b4.json");
+    }
+
+    /// Opcode 0xb5
+    #[test]
+    fn test_b5_json() {
+        run_json("src/cpu/tests/cases/b5.json");
+    }
+
+    /// Opcode 0xb6
+    #[test]
+    fn test_b6_json() {
+        run_json("src/cpu/tests/cases/b6.json");
+    }
+
+    /// Opcode 0xb7
+    #[test]
+    fn test_b7_json() {
+        run_json("src/cpu/tests/cases/b7.json");
+    }
+
+    /// Opcode 0xb8
+    #[test]
+    fn test_b8_json() {
+        run_json("src/cpu/tests/cases/b8.json");
+    }
+
+    /// Opcode 0xb9
+    #[test]
+    fn test_b9_json() {
+        run_json("src/cpu/tests/cases/b9.json");
+    }
+
+    /// Opcode 0xba
+    #[test]
+    fn test_ba_json() {
+        run_json("src/cpu/tests/cases/ba.json");
+    }
+
+    /// Opcode 0xbb
+    #[test]
+    fn test_bb_json() {
+        run_json("src/cpu/tests/cases/bb.json");
+    }
+
+    /// Opcode 0xbc
+    #[test]
+    fn test_bc_json() {
+        run_json("src/cpu/tests/cases/bc.json");
+    }
+
+    /// Opcode 0xbd
+    #[test]
+    fn test_bd_json() {
+        run_json("src/cpu/tests/cases/bd.json");
+    }
+
+    /// Opcode 0xbe
+    #[test]
+    fn test_be_json() {
+        run_json("src/cpu/tests/cases/be.json");
+    }
+
+    /// Opcode 0xbf
+    #[test]
+    fn test_bf_json() {
+        run_json("src/cpu/tests/cases/bf.json");
+    }
+
+    /// Opcode 0xc0
+    #[test]
+    fn test_c0_json() {
+        run_json("src/cpu/tests/cases/c0.json");
+    }
+
+    /// Opcode 0xc1
+    #[test]
+    fn test_c1_json() {
+        run_json("src/cpu/tests/cases/c1.json");
+    }
+
+    /// Opcode 0xc2
+    #[test]
+    fn test_c2_json() {
+        run_json("src/cpu/tests/cases/c2.json");
+    }
+
+    /// Opcode 0xc3
+    #[test]
+    fn test_c3_json() {
+        run_json("src/cpu/tests/cases/c3.json");
+    }
+
+    /// Opcode 0xc4
+    #[test]
+    fn test_c4_json() {
+        run_json("src/cpu/tests/cases/c4.json");
+    }
+
+    /// Opcode 0xc5
+    #[test]
+    fn test_c5_json() {
+        run_json("src/cpu/tests/cases/c5.json");
+    }
+
+    /// Opcode 0xc6
+    #[test]
+    fn test_c6_json() {
+        run_json("src/cpu/tests/cases/c6.json");
+    }
+
+    /// Opcode 0xc7
+    #[test]
+    fn test_c7_json() {
+        run_json("src/cpu/tests/cases/c7.json");
+    }
+
+    /// Opcode 0xc8
+    #[test]
+    fn test_c8_json() {
+        run_json("src/cpu/tests/cases/c8.json");
+    }
+
+    /// Opcode 0xc9
+    #[test]
+    fn test_c9_json() {
+        run_json("src/cpu/tests/cases/c9.json");
+    }
+
+    /// Opcode 0xca
+    #[test]
+    fn test_ca_json() {
+        run_json("src/cpu/tests/cases/ca.json");
+    }
+
+    /// Opcode 0xcb
+    #[test]
+    fn test_cb_json() {
+        run_json("src/cpu/tests/cases/cb.json");
+    }
+
+    /// Opcode 0xcc
+    #[test]
+    fn test_cc_json() {
+        run_json("src/cpu/tests/cases/cc.json");
+    }
+
+    /// Opcode 0xcd
+    #[test]
+    fn test_cd_json() {
+        run_json("src/cpu/tests/cases/cd.json");
+    }
+
+    /// Opcode 0xce
+    #[test]
+    fn test_ce_json() {
+        run_json("src/cpu/tests/cases/ce.json");
+    }
+
+    /// Opcode 0xcf
+    #[test]
+    fn test_cf_json() {
+        run_json("src/cpu/tests/cases/cf.json");
+    }
+
+    /// Opcode 0xd0
+    #[test]
+    fn test_d0_json() {
+        run_json("src/cpu/tests/cases/d0.json");
+    }
+
+    /// Opcode 0xd1
+    #[test]
+    fn test_d1_json() {
+        run_json("src/cpu/tests/cases/d1.json");
+    }
+
+    /// Opcode 0xd2
+    #[test]
+    fn test_d2_json() {
+        run_json("src/cpu/tests/cases/d2.json");
+    }
+
+    /// Opcode 0xd3
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_d3_json() {
+        run_json("src/cpu/tests/cases/d3.json");
+    }
+
+    /// Opcode 0xd4
+    #[test]
+    fn test_d4_json() {
+        run_json("src/cpu/tests/cases/d4.json");
+    }
+
+    /// Opcode 0xd5
+    #[test]
+    fn test_d5_json() {
+        run_json("src/cpu/tests/cases/d5.json");
+    }
+
+    /// Opcode 0xd6
+    #[test]
+    fn test_d6_json() {
+        run_json("src/cpu/tests/cases/d6.json");
+    }
+
+    /// Opcode 0xd7
+    #[test]
+    fn test_d7_json() {
+        run_json("src/cpu/tests/cases/d7.json");
+    }
+
+    /// Opcode 0xd8
+    #[test]
+    fn test_d8_json() {
+        run_json("src/cpu/tests/cases/d8.json");
+    }
+
+    /// Opcode 0xd9
+    #[test]
+    fn test_d9_json() {
+        run_json("src/cpu/tests/cases/d9.json");
+    }
+
+    /// Opcode 0xda
+    #[test]
+    fn test_da_json() {
+        run_json("src/cpu/tests/cases/da.json");
+    }
+
+    /// Opcode 0xdb
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_db_json() {
+        run_json("src/cpu/tests/cases/db.json");
+    }
+
+    /// Opcode 0xdc
+    #[test]
+    fn test_dc_json() {
+        run_json("src/cpu/tests/cases/dc.json");
+    }
+
+    /// Opcode 0xdd
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_dd_json() {
+        run_json("src/cpu/tests/cases/dd.json");
+    }
+
+    /// Opcode 0xde
+    #[test]
+    fn test_de_json() {
+        run_json("src/cpu/tests/cases/de.json");
+    }
+
+    /// Opcode 0xdf
+    #[test]
+    fn test_df_json() {
+        run_json("src/cpu/tests/cases/df.json");
+    }
+
+    /// Opcode 0xe0
+    #[test]
+    fn test_e0_json() {
+        run_json("src/cpu/tests/cases/e0.json");
+    }
+
+    /// Opcode 0xe1
+    #[test]
+    fn test_e1_json() {
+        run_json("src/cpu/tests/cases/e1.json");
+    }
+
+    /// Opcode 0xe2
+    #[test]
+    fn test_e2_json() {
+        run_json("src/cpu/tests/cases/e2.json");
+    }
+
+    /// Opcode 0xe3
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_e3_json() {
+        run_json("src/cpu/tests/cases/e3.json");
+    }
+
+    /// Opcode 0xe4
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_e4_json() {
+        run_json("src/cpu/tests/cases/e4.json");
+    }
+
+    /// Opcode 0xe5
+    #[test]
+    fn test_e5_json() {
+        run_json("src/cpu/tests/cases/e5.json");
+    }
+
+    /// Opcode 0xe6
+    #[test]
+    fn test_e6_json() {
+        run_json("src/cpu/tests/cases/e6.json");
+    }
+
+    /// Opcode 0xe7
+    #[test]
+    fn test_e7_json() {
+        run_json("src/cpu/tests/cases/e7.json");
+    }
+
+    /// Opcode 0xe8
+    #[test]
+    fn test_e8_json() {
+        run_json("src/cpu/tests/cases/e8.json");
+    }
+
+    /// Opcode 0xe9
+    #[test]
+    fn test_e9_json() {
+        run_json("src/cpu/tests/cases/e9.json");
+    }
+
+    /// Opcode 0xea
+    #[test]
+    fn test_ea_json() {
+        run_json("src/cpu/tests/cases/ea.json");
+    }
+
+    /// Opcode 0xeb
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_eb_json() {
+        run_json("src/cpu/tests/cases/eb.json");
+    }
+
+    /// Opcode 0xec
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_ec_json() {
+        run_json("src/cpu/tests/cases/ec.json");
+    }
+
+    /// Opcode 0xed
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_ed_json() {
+        run_json("src/cpu/tests/cases/ed.json");
+    }
+
+    /// Opcode 0xee
+    #[test]
+    fn test_ee_json() {
+        run_json("src/cpu/tests/cases/ee.json");
+    }
+
+    /// Opcode 0xef
+    #[test]
+    fn test_ef_json() {
+        run_json("src/cpu/tests/cases/ef.json");
+    }
+
+    /// Opcode 0xf0
+    #[test]
+    fn test_f0_json() {
+        run_json("src/cpu/tests/cases/f0.json");
+    }
+
+    /// Opcode 0xf1
+    #[test]
+    fn test_f1_json() {
+        run_json("src/cpu/tests/cases/f1.json");
+    }
+
+    /// Opcode 0xf2
+    #[test]
+    fn test_f2_json() {
+        run_json("src/cpu/tests/cases/f2.json");
+    }
+
+    /// Opcode 0xf3
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_f3_json() {
+        run_json("src/cpu/tests/cases/f3.json");
+    }
+
+    /// Opcode 0xf4
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_f4_json() {
+        run_json("src/cpu/tests/cases/f4.json");
+    }
+
+    /// Opcode 0xf5
+    #[test]
+    fn test_f5_json() {
+        run_json("src/cpu/tests/cases/f5.json");
+    }
+
+    /// Opcode 0xf6
+    #[test]
+    fn test_f6_json() {
+        run_json("src/cpu/tests/cases/f6.json");
+    }
+
+    /// Opcode 0xf7
+    #[test]
+    fn test_f7_json() {
+        run_json("src/cpu/tests/cases/f7.json");
+    }
+
+    /// Opcode 0xf8
+    #[test]
+    fn test_f8_json() {
+        run_json("src/cpu/tests/cases/f8.json");
+    }
+
+    /// Opcode 0xf9
+    #[test]
+    fn test_f9_json() {
+        run_json("src/cpu/tests/cases/f9.json");
+    }
+
+    /// Opcode 0xfa
+    #[test]
+    fn test_fa_json() {
+        run_json("src/cpu/tests/cases/fa.json");
+    }
+
+    /// Opcode 0xfb
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_fb_json() {
+        run_json("src/cpu/tests/cases/fb.json");
+    }
+
+    /// Opcode 0xfc
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_fc_json() {
+        run_json("src/cpu/tests/cases/fc.json");
+    }
+
+    /// Opcode 0xfd
+    #[test]
+    #[ignore = "no JSON case file in external suite"]
+    fn test_fd_json() {
+        run_json("src/cpu/tests/cases/fd.json");
+    }
+
+    /// Opcode 0xfe
+    #[test]
+    fn test_fe_json() {
+        run_json("src/cpu/tests/cases/fe.json");
+    }
+
+    /// Opcode 0xff
+    #[test]
+    fn test_ff_json() {
+        run_json("src/cpu/tests/cases/ff.json");
     }
 }

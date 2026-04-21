@@ -241,5 +241,5 @@ Possible enhancements to the test infrastructure:
 - [ ] Integration with other GameBoy test ROMs
 - [ ] Performance benchmarking using test cases
 - [ ] Filtering tests by opcode or instruction type
-- [ ] Testing all JSON files (01.json, 02.json, etc.)
-- [ ] Parallel test execution for faster runs
+- [x] Testing all JSON files (01.json, 02.json, etc.)
+- [x] Parallel test execution for faster runs

@@ -1,6 +1,7 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
+use super::Memory;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -481,8 +482,8 @@ impl Default for MemoryBus {
     }
 }
 
-impl MemoryBus {
-    pub fn read_byte(&self, address: u16) -> u8 {
+impl Memory for MemoryBus {
+    fn read_byte(&self, address: u16) -> u8 {
         println!("Load byte from {address:x}");
         let address = address as usize;
         match address {
@@ -506,7 +507,7 @@ impl MemoryBus {
         }
     }
 
-    pub fn write_byte(&mut self, address: u16, value: u8) {
+    fn write_byte(&mut self, address: u16, value: u8) {
         println!("Write {value} to {address:x}");
         let address = address as usize;
         match address {
@@ -527,23 +528,11 @@ impl MemoryBus {
             _ => panic!("TODO: support other areas of memory"),
         }
     }
-
-    pub fn read_u16(&self, address: u16) -> u16 {
-        let first_byte: u16 = self.read_byte(address).into();
-        let second_byte: u16 = self.read_byte(address.wrapping_add(1)).into();
-
-        (second_byte << 8) | first_byte
-    }
-
-    pub fn write_u16(&mut self, address: u16, value: u16) {
-        self.write_byte(address, value as u8);
-        self.write_byte(address.wrapping_add(1), (value >> 8) as u8);
-    }
 }
 
 #[cfg(test)]
 mod mem_bus_tests {
-    use crate::mem::*;
+    use super::*;
 
     #[test]
     fn test_working_ram() {
