@@ -188,6 +188,18 @@ impl GPU {
             IndexingMethod::METHOD_8800 => self.index_tile_8800(address),
         }
     }
+
+    const WINDOW_WIDTH: u8 = 192;
+    fn pixel_fifo_fetch(&self, mem_bus: &MemoryBus) {
+        let x_in_window = mem_bus.io_regs.scx < GPU::WINDOW_WIDTH;
+        let tile_map_start: u16 = if (mem_bus.io_regs.lcdc.obj_enable && !x_in_window)
+            || (mem_bus.io_regs.lcdc.bg_n_win_tile_data_area && x_in_window)
+        {
+            0x9C00
+        } else {
+            0x9800
+        };
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -363,8 +375,33 @@ impl std::convert::From<u8> for ObjPallete {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+struct SerialTransferControlRegister {
+    // (0=No transfer is in progress or requested, 1=Transfer in progress, or requested)
+    tranfer_start_flag: bool,
+    // (0=External Clock, 1=Internal Clock)
+    shift_clock: bool,
+}
+
+impl std::convert::From<SerialTransferControlRegister> for u8 {
+    fn from(reg: SerialTransferControlRegister) -> u8 {
+        u8::from(reg.tranfer_start_flag) << 7 | u8::from(reg.shift_clock)
+    }
+}
+
+impl std::convert::From<u8> for SerialTransferControlRegister {
+    fn from(byte: u8) -> Self {
+        SerialTransferControlRegister {
+            tranfer_start_flag: byte & (1_u8 << 7) != 0,
+            shift_clock: byte & (1_u8 << 0) != 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 struct IORegisters {
+    sb: u8,
+    sc: SerialTransferControlRegister,
     lcdc: LCDCRegister,
     stat: StatRegister,
     scy: u8,
@@ -382,6 +419,8 @@ struct IORegisters {
 impl IORegisters {
     fn read(&self, address: usize) -> u8 {
         match address {
+            0xFF01 => self.sb,
+            0xFF02 => u8::from(self.sc),
             0xFF40 => u8::from(self.lcdc),
             0xFF41 => u8::from(self.stat),
             0xFF42 => self.scy,
@@ -402,13 +441,17 @@ impl IORegisters {
 
     fn write(&mut self, address: usize, value: u8) {
         match address {
+            0xFF02 => self.sc = value.into(),
             0xFF40 => self.lcdc = value.into(),
             0xFF41 => self.stat = value.into(),
             0xFF42 => self.scy = value,
             0xFF43 => self.scx = value,
             0xFF44 => (), // LY is read-only
             0xFF45 => self.lyc = value,
-            0xFF46 => self.oam_dma_transfer = value, // Start transfer to OAM here
+            0xFF46 => {
+                self.oam_dma_transfer = value;
+                todo!("Start transfer to OAM here")
+            }
             0xFF47 => self.bgp = value.into(),
             0xFF48 => self.obp0 = value.into(),
             0xFF49 => self.obp1 = value.into(),
@@ -440,8 +483,10 @@ impl Default for MemoryBus {
 
 impl MemoryBus {
     pub fn read_byte(&self, address: u16) -> u8 {
+        println!("Load byte from {address:x}");
         let address = address as usize;
         match address {
+            ..VRAM_BEGIN => self.memory[address],
             VRAM_BEGIN..=VRAM_END => {
                 // Don't read from VRAM if LCD & PPU are enabled - return undefined data (0xff)
                 if self.io_regs.lcdc.lcd_n_ppu_enable {
@@ -454,7 +499,7 @@ impl MemoryBus {
                 self.memory[address]
             }
             ERAM_BEGIN..=ERAM_END => self.memory[address - ECHO_WORK_RAM_DIFF],
-            OAM_RAM_BEGIN..=OAM_RAM_END => 0,
+            OAM_RAM_BEGIN..=OAM_RAM_END => self.memory[address],
             URAM_BEGIN..=URAM_END => 0,
             IO_REGS_BEGIN..=IO_REGS_END => self.io_regs.read(address),
             _ => panic!("TODO: support other areas of memory"),
@@ -462,8 +507,10 @@ impl MemoryBus {
     }
 
     pub fn write_byte(&mut self, address: u16, value: u8) {
+        println!("Write {value} to {address:x}");
         let address = address as usize;
         match address {
+            ..VRAM_BEGIN => self.memory[address] = value,
             VRAM_BEGIN..=VRAM_END => {
                 // Write to VRAM only if LCD & PPU are disabled - otherwise ignore write
                 if !self.io_regs.lcdc.lcd_n_ppu_enable {
@@ -474,7 +521,7 @@ impl MemoryBus {
                 self.memory[address] = value
             }
             ERAM_BEGIN..=ERAM_END => self.memory[address - ECHO_WORK_RAM_DIFF] = value,
-            OAM_RAM_BEGIN..=OAM_RAM_END => (),
+            OAM_RAM_BEGIN..=OAM_RAM_END => self.memory[address] = value,
             URAM_BEGIN..=URAM_END => (),
             IO_REGS_BEGIN..=IO_REGS_END => self.io_regs.write(address, value),
             _ => panic!("TODO: support other areas of memory"),
@@ -485,12 +532,12 @@ impl MemoryBus {
         let first_byte: u16 = self.read_byte(address).into();
         let second_byte: u16 = self.read_byte(address.wrapping_add(1)).into();
 
-        (first_byte << 8) | second_byte
+        (second_byte << 8) | first_byte
     }
 
     pub fn write_u16(&mut self, address: u16, value: u16) {
-        self.write_byte(address, (value >> 8) as u8);
-        self.write_byte(address.wrapping_add(1), value as u8);
+        self.write_byte(address, value as u8);
+        self.write_byte(address.wrapping_add(1), (value >> 8) as u8);
     }
 }
 
