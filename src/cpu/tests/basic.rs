@@ -302,6 +302,8 @@ fn run_json(file_name: &str) {
     assert_eq!(failed, 0, "{} test(s) failed", failed);
 }
 
+/// Uses JSON tests from https://github.com/adtennant/GameboyCPUTests/tree/master/v2
+/// These tests don't include STOP/HALT/DI/EI instructions, and there are no tests for not supported instructions
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -436,12 +438,6 @@ mod tests {
     #[test]
     fn test_0f_json() {
         run_json("src/cpu/tests/cases/0f.json");
-    }
-
-    #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_10_json() {
-        run_json("src/cpu/tests/cases/10.json");
     }
 
     #[test]
@@ -950,12 +946,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_76_json() {
-        run_json("src/cpu/tests/cases/76.json");
-    }
-
-    #[test]
     fn test_77_json() {
         run_json("src/cpu/tests/cases/77.json");
     }
@@ -1416,12 +1406,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_d3_json() {
-        run_json("src/cpu/tests/cases/d3.json");
-    }
-
-    #[test]
     fn test_d4_json() {
         run_json("src/cpu/tests/cases/d4.json");
     }
@@ -1457,20 +1441,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_db_json() {
-        run_json("src/cpu/tests/cases/db.json");
-    }
-
-    #[test]
     fn test_dc_json() {
         run_json("src/cpu/tests/cases/dc.json");
-    }
-
-    #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_dd_json() {
-        run_json("src/cpu/tests/cases/dd.json");
     }
 
     #[test]
@@ -1496,18 +1468,6 @@ mod tests {
     #[test]
     fn test_e2_json() {
         run_json("src/cpu/tests/cases/e2.json");
-    }
-
-    #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_e3_json() {
-        run_json("src/cpu/tests/cases/e3.json");
-    }
-
-    #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_e4_json() {
-        run_json("src/cpu/tests/cases/e4.json");
     }
 
     #[test]
@@ -1541,24 +1501,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_eb_json() {
-        run_json("src/cpu/tests/cases/eb.json");
-    }
-
-    #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_ec_json() {
-        run_json("src/cpu/tests/cases/ec.json");
-    }
-
-    #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_ed_json() {
-        run_json("src/cpu/tests/cases/ed.json");
-    }
-
-    #[test]
     fn test_ee_json() {
         run_json("src/cpu/tests/cases/ee.json");
     }
@@ -1581,18 +1523,6 @@ mod tests {
     #[test]
     fn test_f2_json() {
         run_json("src/cpu/tests/cases/f2.json");
-    }
-
-    #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_f3_json() {
-        run_json("src/cpu/tests/cases/f3.json");
-    }
-
-    #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_f4_json() {
-        run_json("src/cpu/tests/cases/f4.json");
     }
 
     #[test]
@@ -1623,24 +1553,6 @@ mod tests {
     #[test]
     fn test_fa_json() {
         run_json("src/cpu/tests/cases/fa.json");
-    }
-
-    #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_fb_json() {
-        run_json("src/cpu/tests/cases/fb.json");
-    }
-
-    #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_fc_json() {
-        run_json("src/cpu/tests/cases/fc.json");
-    }
-
-    #[test]
-    #[ignore = "no JSON case file in external suite"]
-    fn test_fd_json() {
-        run_json("src/cpu/tests/cases/fd.json");
     }
 
     #[test]

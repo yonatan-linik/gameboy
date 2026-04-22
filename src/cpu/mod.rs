@@ -1,4 +1,5 @@
 mod cpu;
+mod instruction;
 mod register;
 
 #[cfg(test)]
